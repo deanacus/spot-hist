@@ -1,0 +1,15 @@
+services:
+  spot-hist:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spot-hist
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CONFIG_DIR: /config
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./.data:/config
