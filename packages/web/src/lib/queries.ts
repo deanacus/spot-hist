@@ -1,7 +1,7 @@
 import {
+  useQuery,
   useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
@@ -25,10 +25,11 @@ export type BootstrapData = {
 export const queryKeys = {
   bootstrap: ["bootstrap"] as const,
   stats: ["stats"] as const,
-  history: (limit: number) => ["history", limit] as const,
-  topArtists: ["top-artists"] as const,
-  topAlbums: ["top-albums"] as const,
-  topTracks: ["top-tracks"] as const,
+  history: ["history"] as const,
+  historyPage: (limit: number, cursor: string | null) => ["history", limit, cursor] as const,
+  topArtists: (limit: number) => ["top-artists", limit] as const,
+  topAlbums: (limit: number) => ["top-albums", limit] as const,
+  topTracks: (limit: number) => ["top-tracks", limit] as const,
   artistDetail: (id: string) => ["artist-detail", id] as const,
   albumDetail: (id: string) => ["album-detail", id] as const,
   trackDetail: (id: string) => ["track-detail", id] as const,
@@ -77,17 +78,17 @@ export function getHomeRoute(data: BootstrapData) {
     return routes.login;
   }
 
-  return routes.dashboard;
+  return routes.home;
 }
 
 async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap }),
     queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.history(50) }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.topArtists }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.topAlbums }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.topTracks }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.history }),
+    queryClient.invalidateQueries({ queryKey: ["top-artists"] }),
+    queryClient.invalidateQueries({ queryKey: ["top-albums"] }),
+    queryClient.invalidateQueries({ queryKey: ["top-tracks"] }),
     queryClient.invalidateQueries({ queryKey: ["artist-detail"] }),
     queryClient.invalidateQueries({ queryKey: ["album-detail"] }),
     queryClient.invalidateQueries({ queryKey: ["track-detail"] }),
@@ -111,40 +112,37 @@ export function useStatsQuery(enabled: boolean) {
   });
 }
 
-export function useHistoryQuery(enabled: boolean, limit = 25) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.history(limit),
-    queryFn: ({ pageParam }) =>
-      api.getHistory(typeof pageParam === "string" ? pageParam : undefined, limit),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+export function useHistoryPageQuery(enabled: boolean, cursor: string | null, limit = 25) {
+  return useQuery({
+    queryKey: queryKeys.historyPage(limit, cursor),
+    queryFn: () => api.getHistory(cursor, limit),
     enabled,
     staleTime: 15_000,
   });
 }
 
-export function useTopArtistsQuery(enabled: boolean) {
+export function useTopArtistsQuery(enabled: boolean, limit = 50) {
   return useQuery({
-    queryKey: queryKeys.topArtists,
-    queryFn: () => api.getTopArtists(),
+    queryKey: queryKeys.topArtists(limit),
+    queryFn: () => api.getTopArtists(limit),
     enabled,
     staleTime: 15_000,
   });
 }
 
-export function useTopAlbumsQuery(enabled: boolean) {
+export function useTopAlbumsQuery(enabled: boolean, limit = 50) {
   return useQuery({
-    queryKey: queryKeys.topAlbums,
-    queryFn: () => api.getTopAlbums(),
+    queryKey: queryKeys.topAlbums(limit),
+    queryFn: () => api.getTopAlbums(limit),
     enabled,
     staleTime: 15_000,
   });
 }
 
-export function useTopTracksQuery(enabled: boolean) {
+export function useTopTracksQuery(enabled: boolean, limit = 50) {
   return useQuery({
-    queryKey: queryKeys.topTracks,
-    queryFn: () => api.getTopTracks(),
+    queryKey: queryKeys.topTracks(limit),
+    queryFn: () => api.getTopTracks(limit),
     enabled,
     staleTime: 15_000,
   });

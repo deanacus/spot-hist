@@ -1,9 +1,10 @@
 export const routes = {
-  home: "/",
+  root: "/",
+  home: "/home",
   setup: "/setup",
   setupComplete: "/setup/complete",
   login: "/login",
-  dashboard: "/dashboard",
+  scrobbles: "/scrobbles",
   artists: "/artists",
   artist: (id: string) => `/artists/${id}`,
   albums: "/albums",
@@ -14,7 +15,7 @@ export const routes = {
 } as const;
 
 export type PrimaryNavItem = {
-  key: "overview" | "artists" | "albums" | "tracks" | "settings";
+  key: "home" | "scrobbles" | "artists" | "albums" | "tracks" | "settings";
   label: string;
   to: string;
   patterns: string[];
@@ -22,10 +23,16 @@ export type PrimaryNavItem = {
 
 export const primaryNavItems: PrimaryNavItem[] = [
   {
-    key: "overview",
-    label: "Overview",
-    to: routes.dashboard,
-    patterns: [routes.dashboard],
+    key: "home",
+    label: "Home",
+    to: routes.home,
+    patterns: [routes.home],
+  },
+  {
+    key: "scrobbles",
+    label: "Scrobbles",
+    to: routes.scrobbles,
+    patterns: [routes.scrobbles],
   },
   {
     key: "artists",

@@ -18,10 +18,10 @@ export function formatCount(value: number | null | undefined) {
 
 export function formatPlayCount(value: number | null | undefined) {
   if (value == null) {
-    return "0 plays";
+    return "0 scrobbles";
   }
 
-  return `${value.toLocaleString()} ${value === 1 ? "play" : "plays"}`;
+  return `${value.toLocaleString()} ${value === 1 ? "scrobble" : "scrobbles"}`;
 }
 
 export function formatDateTime(value: string | null) {
@@ -228,7 +228,7 @@ export function RecentPlaysSection({
       <SectionHeader title={title} description={description} />
       {items.length === 0 ? (
         <p className="text-sm text-(--text-subdued)">
-          No plays have been collected for this view yet.
+          No scrobbles have been collected for this view yet.
         </p>
       ) : (
         <>
@@ -281,7 +281,7 @@ export function RecentPlaysSection({
                 disabled={isLoadingMore}
                 className="rounded-md px-4 py-2 text-sm font-medium text-(--text-primary) bg-(--bg-secondary) hover:bg-(--bg-hover) disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isLoadingMore ? "Loading..." : "Load more"}
+                {isLoadingMore ? "Loading..." : "Load more scrobbles"}
               </button>
             </div>
           )}

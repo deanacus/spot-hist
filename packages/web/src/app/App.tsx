@@ -5,10 +5,11 @@ import { LoadingView } from "../components/Ui";
 import type { BootstrapData } from "../lib/queries";
 import { getHomeRoute, useBootstrapQuery } from "../lib/queries";
 import { routes } from "../lib/routes";
-import { DashboardPage } from "../pages/DashboardPage";
 import { AlbumDetailPage } from "../pages/AlbumDetailPage";
 import { ArtistDetailPage } from "../pages/ArtistDetailPage";
+import { HomePage } from "../pages/HomePage";
 import { LoginPage } from "../pages/LoginPage";
+import { ScrobblesPage } from "../pages/ScrobblesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { SetupCompletePage } from "../pages/SetupCompletePage";
 import { SetupPage } from "../pages/SetupPage";
@@ -49,7 +50,7 @@ function SetupRoute({
     bootstrap.setupStatus.spotifyConnected &&
     bootstrap.setupStatus.setupComplete
   ) {
-    return <Navigate replace to={bootstrap.appStatus ? routes.dashboard : routes.login} />;
+    return <Navigate replace to={bootstrap.appStatus ? routes.home : routes.login} />;
   }
 
   return <>{children}</>;
@@ -71,7 +72,7 @@ function LoginRoute({
   }
 
   if (bootstrap.appStatus) {
-    return <Navigate replace to={routes.dashboard} />;
+    return <Navigate replace to={routes.home} />;
   }
 
   return <>{children}</>;
@@ -89,7 +90,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route
-        path={routes.home}
+        path={routes.root}
         element={<Navigate replace to={home} />}
       />
       <Route
@@ -110,10 +111,18 @@ export function AppRoutes() {
         }
       />
       <Route
-        path={routes.dashboard}
+        path={routes.home}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
-            <DashboardPage />
+            <HomePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path={routes.scrobbles}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <ScrobblesPage />
           </ProtectedRoute>
         }
       />

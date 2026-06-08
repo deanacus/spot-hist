@@ -361,14 +361,23 @@ export const api = {
 
     return request<HistoryPage>(`/api/history?${search.toString()}`);
   },
-  getTopArtists() {
-    return request<TopArtistsResponse>("/api/top/artists");
+  getTopArtists(limit = 50) {
+    const search = new URLSearchParams();
+    search.set("limit", String(limit));
+
+    return request<TopArtistsResponse>(`/api/top/artists?${search.toString()}`);
   },
-  getTopAlbums() {
-    return request<TopAlbumsResponse>("/api/top/albums");
+  getTopAlbums(limit = 50) {
+    const search = new URLSearchParams();
+    search.set("limit", String(limit));
+
+    return request<TopAlbumsResponse>(`/api/top/albums?${search.toString()}`);
   },
-  getTopTracks() {
-    return request<TopTracksResponse>("/api/top/tracks");
+  getTopTracks(limit = 50) {
+    const search = new URLSearchParams();
+    search.set("limit", String(limit));
+
+    return request<TopTracksResponse>(`/api/top/tracks?${search.toString()}`);
   },
   getArtistDetail(id: string) {
     return request<ArtistDetailPage>(`/api/artists/${id}`);

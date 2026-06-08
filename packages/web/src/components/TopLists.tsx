@@ -1,19 +1,19 @@
-import type { ReactNode } from "react";
-import { EmptyState, InlineNotice } from "./Ui";
-import { AlbumArt, ArtistArtwork, InternalDetailLink } from "./Media";
-import type { TopAlbum, TopArtist, TopTrack } from "../lib/api";
-import { routes } from "../lib/routes";
+import type { ReactNode } from 'react';
+import { EmptyState, InlineNotice } from './Ui';
+import { AlbumArt, ArtistArtwork, InternalDetailLink } from './Media';
+import type { TopAlbum, TopArtist, TopTrack } from '../lib/api';
+import { routes } from '../lib/routes';
 
 function formatPlayCount(playCount: number) {
   return playCount.toLocaleString();
 }
 
 function formatLastPlayed(lastPlayedAt: string | null) {
-  if (!lastPlayedAt) return "—";
+  if (!lastPlayedAt) return '—';
   return new Date(lastPlayedAt).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
@@ -24,7 +24,7 @@ function ListHeader({ columns }: { columns: string[] }) {
     <div className="flex items-center gap-3 border-b border-(--border-subtle) px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-(--text-subdued)">
       <span className="w-8 text-center">#</span>
       {columns.map((col) => (
-        <span key={col} className={col === "Title" ? "flex-1 min-w-0" : "shrink-0 w-28 text-right"}>
+        <span key={col} className={col === 'Title' ? 'flex-1 min-w-0' : 'shrink-0 w-28 text-right'}>
           {col}
         </span>
       ))}
@@ -34,19 +34,15 @@ function ListHeader({ columns }: { columns: string[] }) {
 
 /* ─── TopListSection ─── */
 
-function TopListSection({
-  loading,
-  error,
-  emptyTitle,
-  emptyBody,
-  children,
-}: {
+type TopListSectionProps = {
   loading: boolean;
   error: string | null;
   emptyTitle: string;
   emptyBody: string;
   children: ReactNode;
-}) {
+};
+
+function TopListSection({ loading, error, emptyTitle, emptyBody, children }: TopListSectionProps) {
   if (loading) {
     return <p className="py-8 text-sm text-(--text-subdued) animate-pulse">Loading...</p>;
   }
@@ -63,16 +59,13 @@ function TopListSection({
 }
 
 /* ─── Top Artists List ─── */
-
-export function TopArtistsList({
-  items,
-  loading,
-  error,
-}: {
+type TopArtistsListProps = {
   items: TopArtist[];
   loading: boolean;
   error: string | null;
-}) {
+};
+
+export function TopArtistsList({ items, loading, error }: TopArtistsListProps) {
   return (
     <TopListSection
       loading={loading}
@@ -82,7 +75,7 @@ export function TopArtistsList({
     >
       {items.length > 0 ? (
         <div>
-          <ListHeader columns={["Title", "Plays", "Last played"]} />
+          <ListHeader columns={['Title', 'Scrobbles', 'Last scrobbled']} />
           {items.map((item, index) => (
             <div
               key={item.artist.id}
@@ -91,7 +84,11 @@ export function TopArtistsList({
               <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
                 {index + 1}
               </span>
-              <ArtistArtwork name={item.artist.name} imageUrl={item.artist.imageUrl ?? null} className="h-10 w-10" />
+              <ArtistArtwork
+                name={item.artist.name}
+                imageUrl={item.artist.imageUrl ?? null}
+                className="h-10 w-10"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-(--text-primary)">
                   <InternalDetailLink to={routes.artist(item.artist.id)}>
@@ -115,15 +112,13 @@ export function TopArtistsList({
 
 /* ─── Top Albums List ─── */
 
-export function TopAlbumsList({
-  items,
-  loading,
-  error,
-}: {
+type TopAlbumsListProps = {
   items: TopAlbum[];
   loading: boolean;
   error: string | null;
-}) {
+};
+
+export function TopAlbumsList({ items, loading, error }: TopAlbumsListProps) {
   return (
     <TopListSection
       loading={loading}
@@ -133,7 +128,7 @@ export function TopAlbumsList({
     >
       {items.length > 0 ? (
         <div>
-          <ListHeader columns={["Title", "Plays", "Last played"]} />
+          <ListHeader columns={['Title', 'Scrobbles', 'Last scrobbled']} />
           {items.map((item, index) => (
             <div
               key={item.album.id}
@@ -156,7 +151,7 @@ export function TopAlbumsList({
                 <p className="truncate text-xs text-(--text-secondary)">
                   {item.artists.map((artist, idx) => (
                     <span key={artist.id}>
-                      {idx > 0 ? ", " : null}
+                      {idx > 0 ? ', ' : null}
                       <InternalDetailLink to={routes.artist(artist.id)}>
                         {artist.name}
                       </InternalDetailLink>
@@ -180,15 +175,13 @@ export function TopAlbumsList({
 
 /* ─── Top Tracks List ─── */
 
-export function TopTracksList({
-  items,
-  loading,
-  error,
-}: {
+type TopTracksListProps = {
   items: TopTrack[];
   loading: boolean;
   error: string | null;
-}) {
+};
+
+export function TopTracksList({ items, loading, error }: TopTracksListProps) {
   return (
     <TopListSection
       loading={loading}
@@ -198,7 +191,7 @@ export function TopTracksList({
     >
       {items.length > 0 ? (
         <div>
-          <ListHeader columns={["Title", "Plays", "Last played"]} />
+          <ListHeader columns={['Title', 'Scrobbles', 'Last scrobbled']} />
           {items.map((item, index) => (
             <div
               key={item.track.id}
@@ -221,13 +214,13 @@ export function TopTracksList({
                 <p className="truncate text-xs text-(--text-secondary)">
                   {item.artists.map((artist, idx) => (
                     <span key={artist.id}>
-                      {idx > 0 ? ", " : null}
+                      {idx > 0 ? ', ' : null}
                       <InternalDetailLink to={routes.artist(artist.id)}>
                         {artist.name}
                       </InternalDetailLink>
                     </span>
-                  ))}{" "}
-                  •{" "}
+                  ))}{' '}
+                  •{' '}
                   <InternalDetailLink to={routes.album(item.album.id)}>
                     {item.album.name}
                   </InternalDetailLink>

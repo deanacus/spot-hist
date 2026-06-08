@@ -141,10 +141,10 @@ export function AlbumDetailPage() {
           <StatRow
             items={[
               { label: 'Rank', value: detail.stats.rank ? `#${detail.stats.rank}` : '—' },
-              { label: 'Total plays', value: formatPlayCount(detail.stats.totalPlays) },
+              { label: 'Total scrobbles', value: formatPlayCount(detail.stats.totalPlays) },
               { label: 'Played tracks', value: detail.stats.uniquePlayedTracks.toLocaleString() },
-              { label: 'First played', value: formatDateTime(detail.stats.firstPlayedAt) },
-              { label: 'Last played', value: formatDateTime(detail.stats.lastPlayedAt) },
+              { label: 'First scrobbled', value: formatDateTime(detail.stats.firstPlayedAt) },
+              { label: 'Last scrobbled', value: formatDateTime(detail.stats.lastPlayedAt) },
             ]}
           />
 
@@ -158,7 +158,7 @@ export function AlbumDetailPage() {
                 <div className="flex items-center gap-3 border-b border-(--border-subtle) px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-(--text-subdued)">
                   <span className="w-8 text-center">#</span>
                   <span className="flex-1">Title</span>
-                  <span className="w-20 text-right">Plays</span>
+                  <span className="w-20 text-right">Scrobbles</span>
                 </div>
                 {detail.tracklist.map((item) => (
                   <div
@@ -191,10 +191,10 @@ export function AlbumDetailPage() {
             )}
           </section>
 
-          {/* Recent plays */}
+          {/* Recent scrobbles */}
           <RecentPlaysSection
-            title="Recent plays"
-            description="Most recent plays collected for this album."
+            title="Recent scrobbles"
+            description="Most recent scrobbles collected for this album."
             items={recentPlays}
             onLoadMore={() => recentPlaysQuery.fetchNextPage()}
             hasMore={recentPlaysQuery.hasNextPage}

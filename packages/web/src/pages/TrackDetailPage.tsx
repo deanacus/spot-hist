@@ -154,17 +154,17 @@ export function TrackDetailPage() {
           <StatRow
             items={[
               { label: "Rank", value: detail.stats.rank ? `#${detail.stats.rank}` : "—" },
-              { label: "Total plays", value: formatPlayCount(detail.stats.totalPlays) },
-              { label: "First played", value: formatDateTime(detail.stats.firstPlayedAt) },
-              { label: "Last played", value: formatDateTime(detail.stats.lastPlayedAt) },
+              { label: "Total scrobbles", value: formatPlayCount(detail.stats.totalPlays) },
+              { label: "First scrobbled", value: formatDateTime(detail.stats.firstPlayedAt) },
+              { label: "Last scrobbled", value: formatDateTime(detail.stats.lastPlayedAt) },
               { label: "Duration", value: formatDuration(detail.track.durationMs) },
             ]}
           />
 
-          {/* Recent plays */}
+          {/* Recent scrobbles */}
           <RecentPlaysSection
-            title="Recent plays"
-            description="Most recent plays collected for this track."
+            title="Recent scrobbles"
+            description="Most recent scrobbles collected for this track."
             items={recentPlays}
             onLoadMore={() => recentPlaysQuery.fetchNextPage()}
             hasMore={recentPlaysQuery.hasNextPage}
@@ -206,7 +206,7 @@ export function TrackDetailPage() {
                       </p>
                     </div>
                     <span className="text-sm tabular-nums text-(--text-secondary)">
-                      {item.playCount?.toLocaleString() ?? "0"} plays
+                      {item.playCount?.toLocaleString() ?? "0"} scrobbles
                     </span>
                   </div>
                 ))}

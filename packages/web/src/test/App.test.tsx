@@ -94,6 +94,35 @@ function makeTopTrack(id: string, name: string, imageUrl: string | null = "https
   };
 }
 
+function makeHomeMocks() {
+  return {
+    "GET /api/stats": {
+      body: makeStats(),
+    },
+    "GET /api/history?limit=10": {
+      body: {
+        items: [makeHistoryItem("play_1", "Midnight Run", "https://cdn.test/signals.png")],
+        nextCursor: "cursor_2",
+      },
+    },
+    "GET /api/top/artists?limit=10": {
+      body: {
+        items: [makeTopArtist("artist_1", "North Coast")],
+      },
+    },
+    "GET /api/top/albums?limit=10": {
+      body: {
+        items: [makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")],
+      },
+    },
+    "GET /api/top/tracks?limit=10": {
+      body: {
+        items: [makeTopTrack("track_1", "Midnight Run", "https://cdn.test/midnight-run.png")],
+      },
+    },
+  };
+}
+
 beforeEach(() => {
   vi.stubGlobal("confirm", vi.fn(() => true));
 });
@@ -129,7 +158,7 @@ describe("bootstrap routing", () => {
     await waitForPathname("/login");
   });
 
-  it("routes active sessions to the dashboard", async () => {
+  it("routes active sessions to the home page", async () => {
     installFetchMock({
       "GET /api/setup/status": {
         body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
@@ -137,31 +166,24 @@ describe("bootstrap routing", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/stats": {
-        body: makeStats(),
-      },
-      "GET /api/history?limit=50": {
-        body: {
-          items: [makeHistoryItem("play_1", "Midnight Run", "https://cdn.test/signals.png")],
-          nextCursor: null,
-        },
-      },
+      ...makeHomeMocks(),
     });
 
     await renderApp("/");
 
-    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Signals album art" })).toHaveAttribute(
-      "src",
-      "https://cdn.test/signals.png",
-    );
-    expect(screen.getByRole("heading", { name: "Listening overview" })).toBeInTheDocument();
-    await waitForPathname(routes.dashboard);
+    expect((await screen.findAllByText("Midnight Run")).length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole("img", { name: "Signals album art" })
+        .some((element) => element.getAttribute("src") === "https://cdn.test/signals.png"),
+    ).toBe(true);
+    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    await waitForPathname(routes.home);
   });
 });
 
 describe("query-driven auth flows", () => {
-  it("invalidates bootstrap auth state after login and routes to the dashboard", async () => {
+  it("invalidates bootstrap auth state after login and routes to the home page", async () => {
     const fetchMock = installFetchMock({
       "GET /api/setup/status": {
         body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
@@ -178,15 +200,7 @@ describe("query-driven auth flows", () => {
       "POST /api/auth/session": {
         status: 204,
       },
-      "GET /api/stats": {
-        body: makeStats(),
-      },
-      "GET /api/history?limit=50": {
-        body: {
-          items: [makeHistoryItem("play_1", "Midnight Run")],
-          nextCursor: null,
-        },
-      },
+      ...makeHomeMocks(),
     });
 
     await renderApp("/login");
@@ -195,8 +209,8 @@ describe("query-driven auth flows", () => {
     await user.type(await screen.findByLabelText(/Password/), "correct-horse");
     await user.click(screen.getByRole("button", { name: "Login" }));
 
-    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
-    await waitForPathname("/dashboard");
+    expect((await screen.findAllByText("Midnight Run")).length).toBeGreaterThan(0);
+    await waitForPathname(routes.home);
     await waitFor(() => {
       expect(fetchMock.count("POST /api/auth/session")).toBe(1);
       expect(fetchMock.count("GET /api/status")).toBe(2);
@@ -209,7 +223,10 @@ describe("query-driven auth flows", () => {
       "GET /api/setup/status",
       "GET /api/status",
       "GET /api/stats",
-      "GET /api/history?limit=50",
+      "GET /api/history?limit=10",
+      "GET /api/top/artists?limit=10",
+      "GET /api/top/albums?limit=10",
+      "GET /api/top/tracks?limit=10",
     ]);
   });
 
@@ -240,8 +257,95 @@ describe("query-driven auth flows", () => {
   });
 });
 
-describe("dashboard history query", () => {
-  it("renders the next page of listening history", async () => {
+describe("home page", () => {
+  it("renders exactly the latest 10 scrobbles and no load more button", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/history?limit=10": {
+        body: {
+          items: Array.from({ length: 10 }, (_, index) =>
+            makeHistoryItem(`play_${index + 1}`, `Track ${index + 1}`),
+          ),
+          nextCursor: "cursor_11",
+        },
+      },
+      "GET /api/top/artists?limit=10": {
+        body: {
+          items: [makeTopArtist("artist_1", "North Coast")],
+        },
+      },
+      "GET /api/top/albums?limit=10": {
+        body: {
+          items: [makeTopAlbum("album_1", "Signals")],
+        },
+      },
+      "GET /api/top/tracks?limit=10": {
+        body: {
+          items: [makeTopTrack("track_1", "Midnight Run")],
+        },
+      },
+    });
+
+    await renderApp(routes.home);
+
+    expect(await screen.findByText("Track 1")).toBeInTheDocument();
+    expect(screen.getByText("Track 10")).toBeInTheDocument();
+    expect(screen.queryByText("Track 11")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more scrobbles" })).not.toBeInTheDocument();
+    expect(fetchMock.count("GET /api/history?limit=10")).toBe(1);
+  });
+
+  it("requests top lists with limit=10 and links to the full pages", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      ...makeHomeMocks(),
+    });
+
+    await renderApp(routes.home);
+
+    expect((await screen.findAllByText("North Coast")).length).toBeGreaterThan(0);
+    expect(fetchMock.count("GET /api/top/artists?limit=10")).toBe(1);
+    expect(fetchMock.count("GET /api/top/albums?limit=10")).toBe(1);
+    expect(fetchMock.count("GET /api/top/tracks?limit=10")).toBe(1);
+
+    const scrobblesViewAllLink = screen
+      .getAllByRole("link", { name: "View all" })
+      .find((element) => element.getAttribute("href") === routes.scrobbles);
+    expect(scrobblesViewAllLink).toHaveAttribute("href", routes.scrobbles);
+
+    const artistsCardLink = screen
+      .getAllByRole("link")
+      .find((element) => element.getAttribute("href") === routes.artists);
+    expect(artistsCardLink).toHaveAttribute("href", routes.artists);
+
+    const albumsCardLink = screen
+      .getAllByRole("link")
+      .find((element) => element.getAttribute("href") === routes.albums);
+    expect(albumsCardLink).toHaveAttribute("href", routes.albums);
+
+    const tracksCardLink = screen
+      .getAllByRole("link")
+      .find((element) => element.getAttribute("href") === routes.tracks);
+    expect(tracksCardLink).toHaveAttribute("href", routes.tracks);
+  });
+});
+
+describe("scrobbles page", () => {
+  it("uses previous and next pagination for full history", async () => {
     const fetchMock = installFetchMock({
       "GET /api/setup/status": {
         body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
@@ -266,20 +370,23 @@ describe("dashboard history query", () => {
       },
     });
 
-    await renderApp("/dashboard");
+    await renderApp(routes.scrobbles);
 
     expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Load more" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
 
     expect(await screen.findByText("Dawn Echo")).toBeInTheDocument();
     expect(fetchMock.calls.map((call) => call.url)).toContain("/api/history?cursor=cursor_2&limit=50");
-  });
-});
 
-describe("top lists", () => {
-  it("links dashboard metric cards to the entity index pages", async () => {
+    await user.click(screen.getByRole("button", { name: "Previous" }));
+
+    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+  });
+
+  it("shows scrobbles in the primary navigation and marks the section active", async () => {
     installFetchMock({
       "GET /api/setup/status": {
         body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
@@ -296,39 +403,17 @@ describe("top lists", () => {
           nextCursor: null,
         },
       },
-      "GET /api/top/artists": {
-        body: {
-          items: [makeTopArtist("artist_1", "North Coast")],
-        },
-      },
     });
 
-    await renderApp("/dashboard");
+    await renderApp(routes.scrobbles);
 
-    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+    const scrobblesNavLink = await screen.findByRole("link", { name: "Scrobbles" });
 
-    const artistsCardLink = screen
-      .getAllByRole("link")
-      .find((element) => element.getAttribute("href") === routes.artists);
-    expect(artistsCardLink).toHaveAttribute("href", routes.artists);
-
-    const albumsCardLink = screen
-      .getAllByRole("link")
-      .find((element) => element.getAttribute("href") === routes.albums);
-    expect(albumsCardLink).toHaveAttribute("href", routes.albums);
-
-    const tracksCardLink = screen
-      .getAllByRole("link")
-      .find((element) => element.getAttribute("href") === routes.tracks);
-    expect(tracksCardLink).toHaveAttribute("href", routes.tracks);
-
-    const user = userEvent.setup();
-    await user.click(artistsCardLink!);
-
-    expect(screen.getByText("North Coast")).toBeInTheDocument();
-    await waitForPathname(routes.artists);
+    expect(scrobblesNavLink.className).toContain("bg-(--accent)");
   });
+});
 
+describe("top lists", () => {
   it("renders top albums with album art", async () => {
     installFetchMock({
       "GET /api/setup/status": {
@@ -337,7 +422,7 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/albums": {
+      "GET /api/top/albums?limit=50": {
         body: {
           items: [makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")],
         },
@@ -361,7 +446,7 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/artists": {
+      "GET /api/top/artists?limit=50": {
         body: {
           items: [makeTopArtist("artist_1", "North Coast")],
         },
@@ -382,7 +467,7 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/artists": {
+      "GET /api/top/artists?limit=50": {
         body: {
           items: [makeTopArtist("artist_1", "North Coast", "https://cdn.test/north-coast.png")],
         },
@@ -406,7 +491,7 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/tracks": {
+      "GET /api/top/tracks?limit=50": {
         body: {
           items: [],
         },
@@ -431,7 +516,7 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/tracks": {
+      "GET /api/top/tracks?limit=50": {
         body: {
           items: [makeTopTrack("track_1", "Midnight Run", "https://cdn.test/midnight-run.png")],
         },
@@ -491,10 +576,10 @@ describe("top lists", () => {
     await renderApp(routes.artist("artist_1"));
 
     const artistsNavLink = await screen.findByRole("link", { name: "Artists" });
-    const tracksNavLink = screen.getByRole("link", { name: "Tracks" });
+    const scrobblesNavLink = screen.getByRole("link", { name: "Scrobbles" });
 
     expect(artistsNavLink.className).toContain("bg-(--accent)");
-    expect(tracksNavLink.className).not.toContain("bg-(--accent)");
+    expect(scrobblesNavLink.className).not.toContain("bg-(--accent)");
   });
 });
 
