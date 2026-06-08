@@ -99,6 +99,7 @@ type ArtistDetailPage = {
   }>;
   topAlbums: Array<{
     album: AlbumSummary;
+    albumType: string;
     artists: ArtistSummary[];
     playCount: number;
     lastPlayedAt: string | null;
@@ -1229,6 +1230,7 @@ async function getArtistPage(database: DatabaseContext, artist: LocalArtistRow):
     topAlbums: filteredTopAlbums
       .map((item) => ({
         album: item.album,
+        albumType: item.albumType,
         artists: item.artists,
         playCount: item.playCount,
         lastPlayedAt: item.lastPlayedAt,

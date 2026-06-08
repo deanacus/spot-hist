@@ -148,6 +148,7 @@ function createArtistAlbumsPayload(version: string) {
         id: `catalog-alpha-${version}`,
         name: version === "v2" ? "Alpha Return" : "Alpha Debut",
         album_type: "album",
+        album_group: "album",
         total_tracks: 11,
         release_date: version === "v2" ? "2025-02-01" : "2023-02-01",
         release_date_precision: "day",
@@ -170,6 +171,128 @@ function createArtistAlbumsPayload(version: string) {
         ],
         external_urls: {
           spotify: `https://open.spotify.com/album/catalog-alpha-${version}`,
+        },
+      },
+      {
+        id: `catalog-single-${version}`,
+        name: version === "v2" ? "Alpha Signal" : "Alpha Signal",
+        album_type: "single",
+        album_group: "single",
+        total_tracks: 2,
+        release_date: version === "v2" ? "2025-03-01" : "2023-03-01",
+        release_date_precision: "day",
+        uri: `spotify:album:catalog-single-${version}`,
+        href: `https://api.spotify.com/v1/albums/catalog-single-${version}`,
+        images: [
+          {
+            url: `https://images/catalog-single-${version}.jpg`,
+            width: 640,
+            height: 640,
+          },
+        ],
+        artists: [
+          {
+            id: "artist-alpha",
+            name: "Alpha Artist",
+            uri: "spotify:artist:artist-alpha",
+            href: "https://api.spotify.com/v1/artists/artist-alpha",
+          },
+        ],
+        external_urls: {
+          spotify: `https://open.spotify.com/album/catalog-single-${version}`,
+        },
+      },
+      {
+        id: `catalog-compilation-${version}`,
+        name: version === "v2" ? "Alpha Archives" : "Alpha Archives",
+        album_type: "compilation",
+        album_group: "compilation",
+        total_tracks: 20,
+        release_date: version === "v2" ? "2025-04-01" : "2023-04-01",
+        release_date_precision: "day",
+        uri: `spotify:album:catalog-compilation-${version}`,
+        href: `https://api.spotify.com/v1/albums/catalog-compilation-${version}`,
+        images: [
+          {
+            url: `https://images/catalog-compilation-${version}.jpg`,
+            width: 640,
+            height: 640,
+          },
+        ],
+        artists: [
+          {
+            id: "artist-alpha",
+            name: "Alpha Artist",
+            uri: "spotify:artist:artist-alpha",
+            href: "https://api.spotify.com/v1/artists/artist-alpha",
+          },
+        ],
+        external_urls: {
+          spotify: `https://open.spotify.com/album/catalog-compilation-${version}`,
+        },
+      },
+      {
+        id: `catalog-appears-${version}`,
+        name: version === "v2" ? "Guest Signal" : "Guest Signal",
+        album_type: "album",
+        album_group: "appears_on",
+        total_tracks: 12,
+        release_date: version === "v2" ? "2025-05-01" : "2023-05-01",
+        release_date_precision: "day",
+        uri: `spotify:album:catalog-appears-${version}`,
+        href: `https://api.spotify.com/v1/albums/catalog-appears-${version}`,
+        images: [
+          {
+            url: `https://images/catalog-appears-${version}.jpg`,
+            width: 640,
+            height: 640,
+          },
+        ],
+        artists: [
+          {
+            id: "artist-alpha",
+            name: "Alpha Artist",
+            uri: "spotify:artist:artist-alpha",
+            href: "https://api.spotify.com/v1/artists/artist-alpha",
+          },
+        ],
+        external_urls: {
+          spotify: `https://open.spotify.com/album/catalog-appears-${version}`,
+        },
+      },
+      {
+        id: `catalog-guest-${version}`,
+        name: version === "v2" ? "Beta Featuring Alpha" : "Beta Featuring Alpha",
+        album_type: "single",
+        album_group: "single",
+        total_tracks: 1,
+        release_date: version === "v2" ? "2025-06-01" : "2023-06-01",
+        release_date_precision: "day",
+        uri: `spotify:album:catalog-guest-${version}`,
+        href: `https://api.spotify.com/v1/albums/catalog-guest-${version}`,
+        images: [
+          {
+            url: `https://images/catalog-guest-${version}.jpg`,
+            width: 640,
+            height: 640,
+          },
+        ],
+        artists: [
+          {
+            id: "artist-beta",
+            name: "Beta Artist",
+            uri: "spotify:artist:artist-beta",
+            href: "https://api.spotify.com/v1/artists/artist-beta",
+          },
+          {
+            id: "artist-alpha",
+            name: "Alpha Artist",
+            uri: "spotify:artist:artist-alpha",
+            href: "https://api.spotify.com/v1/artists/artist-alpha",
+          },
+        ],
+        external_urls: {
+          spotify: `https://open.spotify.com/album/catalog-guest-${version}`,
         },
       },
     ],
@@ -464,10 +587,11 @@ describe("detail page endpoints", () => {
     expect(
       body.topAlbums.map((item: any) => ({
         id: albumIdOf(item),
+        albumType: item?.albumType ?? null,
         playCount: playCountOf(item),
       })),
     ).toEqual([
-      { id: "album-alpha", playCount: 4 },
+      { id: "album-alpha", albumType: "album", playCount: 4 },
     ]);
     expect(body.recentPlays.map((item: any) => item.playedAt)).toEqual([
       "2024-01-07T00:00:00.000Z",
@@ -620,7 +744,21 @@ describe("detail page endpoints", () => {
       expect.objectContaining({
         id: "catalog-alpha-v1",
         name: "Alpha Debut",
+        albumType: "album",
       }),
+      expect.objectContaining({
+        id: "catalog-single-v1",
+        name: "Alpha Signal",
+        albumType: "single",
+      }),
+    ]);
+    expect(refresh.body.catalogAlbums.map((item: any) => item.id)).toEqual([
+      "catalog-alpha-v1",
+      "catalog-single-v1",
+    ]);
+    expect(refresh.body.catalogAlbums.map((item: any) => item.albumType)).toEqual([
+      "album",
+      "single",
     ]);
     expect(fetchArtist).toHaveBeenCalledTimes(1);
     expect(fetchArtistAlbums).toHaveBeenCalledTimes(1);
@@ -632,6 +770,10 @@ describe("detail page endpoints", () => {
     expect(row?.refresh_after).toBeTruthy();
     expect(String(row?.genres_json)).toContain("art pop");
     expect(String(row?.catalog_albums_json)).toContain("Alpha Debut");
+    expect(String(row?.catalog_albums_json)).toContain("Alpha Signal");
+    expect(String(row?.catalog_albums_json)).not.toContain("Alpha Archives");
+    expect(String(row?.catalog_albums_json)).not.toContain("Guest Signal");
+    expect(String(row?.catalog_albums_json)).not.toContain("Beta Featuring Alpha");
 
     const cached = await getJson(app, sessionCookie, `/api/artists/${seed.ids.artist}`);
     expect(cached.response.statusCode).toBe(200);
@@ -641,6 +783,10 @@ describe("detail page endpoints", () => {
         url: "https://open.spotify.com/artist/artist-alpha?version=v1",
       },
     });
+    expect(cached.body.catalogAlbums.map((item: any) => item.id)).toEqual([
+      "catalog-alpha-v1",
+      "catalog-single-v1",
+    ]);
     expect(fetchArtist).toHaveBeenCalledTimes(1);
     expect(fetchArtistAlbums).toHaveBeenCalledTimes(1);
 

@@ -196,6 +196,7 @@ export type ArtistTopAlbum = {
   album: AlbumSummary & {
     routeId?: string | null;
   };
+  albumType: string;
   artists: ArtistSummary[];
   playCount: number;
   lastPlayedAt: string | null;
