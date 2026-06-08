@@ -10,6 +10,11 @@ import { ArtistDetailPage } from "../pages/ArtistDetailPage";
 import { HomePage } from "../pages/HomePage";
 import { LoginPage } from "../pages/LoginPage";
 import { ScrobblesPage } from "../pages/ScrobblesPage";
+import {
+  AlbumScrobblesPage,
+  ArtistScrobblesPage,
+  TrackScrobblesPage,
+} from "../pages/ScopedScrobblesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { SetupCompletePage } from "../pages/SetupCompletePage";
 import { SetupPage } from "../pages/SetupPage";
@@ -167,6 +172,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.artists}/:id/scrobbles`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <ArtistScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={`${routes.albums}/:id`}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
@@ -175,10 +188,26 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.albums}/:id/scrobbles`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <AlbumScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={`${routes.tracks}/:id`}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
             <TrackDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path={`${routes.tracks}/:id/scrobbles`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <TrackScrobblesPage />
           </ProtectedRoute>
         }
       />

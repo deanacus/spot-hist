@@ -123,6 +123,31 @@ function makeHomeMocks() {
   };
 }
 
+function makeScopedScrobblesRoute(section: "artists" | "albums" | "tracks", id: string) {
+  return `/${section}/${id}/scrobbles`;
+}
+
+function makeScopedArtistDetail() {
+  return {
+    artist: { id: "artist_1", name: "North Coast" },
+    stats: { totalPlays: 48 },
+  };
+}
+
+function makeScopedAlbumDetail() {
+  return {
+    album: { id: "album_1", name: "Signals" },
+    stats: { totalPlays: 31 },
+  };
+}
+
+function makeScopedTrackDetail() {
+  return {
+    track: { id: "track_1", name: "Midnight Run" },
+    stats: { totalPlays: 18 },
+  };
+}
+
 beforeEach(() => {
   vi.stubGlobal("confirm", vi.fn(() => true));
 });
@@ -410,6 +435,55 @@ describe("scrobbles page", () => {
     const scrobblesNavLink = await screen.findByRole("link", { name: "Scrobbles" });
 
     expect(scrobblesNavLink.className).toContain("bg-(--accent)");
+  });
+});
+
+describe("scoped scrobbles routes", () => {
+  it.each([
+    {
+      route: makeScopedScrobblesRoute("artists", "artist_1"),
+      detailRequest: "GET /api/artists/artist_1",
+      detailBody: makeScopedArtistDetail(),
+      scrobblesRequest: "GET /api/artists/artist_1/recent-plays?limit=50",
+      heading: "North Coast scrobbles",
+    },
+    {
+      route: makeScopedScrobblesRoute("albums", "album_1"),
+      detailRequest: "GET /api/albums/album_1",
+      detailBody: makeScopedAlbumDetail(),
+      scrobblesRequest: "GET /api/albums/album_1/recent-plays?limit=50",
+      heading: "Signals scrobbles",
+    },
+    {
+      route: makeScopedScrobblesRoute("tracks", "track_1"),
+      detailRequest: "GET /api/tracks/track_1",
+      detailBody: makeScopedTrackDetail(),
+      scrobblesRequest: "GET /api/tracks/track_1/recent-plays?limit=50",
+      heading: "Midnight Run scrobbles",
+    },
+  ])("matches $route for active sessions", async ({ route, detailRequest, detailBody, scrobblesRequest, heading }) => {
+    installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      [detailRequest]: {
+        body: detailBody,
+      },
+      [scrobblesRequest]: {
+        body: {
+          items: [makeHistoryItem("play_1", "Midnight Run")],
+          nextCursor: null,
+        },
+      },
+    });
+
+    await renderApp(route);
+
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    await waitForPathname(route);
   });
 });
 

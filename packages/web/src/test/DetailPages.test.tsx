@@ -52,6 +52,18 @@ function makeAppStatus() {
 function makeArtistDetail(
   detailStatus: "fresh" | "stale" | "missing" = "fresh",
   options?: {
+    topAlbums?: Array<{
+      album: {
+        id: string;
+        name: string;
+        imageUrl: string | null;
+        routeId?: string | null;
+      };
+      albumType: string;
+      artists: Array<{ id: string; name: string }>;
+      playCount: number;
+      lastPlayedAt: string | null;
+    }>;
     catalogAlbums?: Array<{
       id: string;
       name: string;
@@ -116,25 +128,27 @@ function makeArtistDetail(
         lastPlayedAt: "2026-06-03T06:00:00.000Z",
       },
     ],
-    topAlbums: [
-      {
-        album: {
-          id: "album_1",
-          name: "Signals",
-          imageUrl: "https://cdn.test/signals.png",
-          uri: "spotify:album:album_1",
-          href: "https://api.spotify.test/albums/album_1",
-          releaseDate: "2024-04-01",
-          releaseDatePrecision: "day",
+    topAlbums:
+      options?.topAlbums ??
+      [
+        {
+          album: {
+            id: "album_1",
+            name: "Signals",
+            imageUrl: "https://cdn.test/signals.png",
+            uri: "spotify:album:album_1",
+            href: "https://api.spotify.test/albums/album_1",
+            releaseDate: "2024-04-01",
+            releaseDatePrecision: "day",
+            totalTracks: 10,
+            routeId: "album_1",
+          },
           albumType: "album",
-          totalTracks: 10,
-          routeId: "album_1",
+          artists: [{ id: "artist_1", name: "North Coast" }],
+          playCount: 21,
+          lastPlayedAt: "2026-06-03T06:00:00.000Z",
         },
-        artists: [{ id: "artist_1", name: "North Coast" }],
-        playCount: 21,
-        lastPlayedAt: "2026-06-03T06:00:00.000Z",
-      },
-    ],
+      ],
     recentPlays: makeRecentPlaysPage().items,
     catalogAlbums:
       options?.catalogAlbums ??
@@ -305,6 +319,38 @@ function makeTrackDetail(detailStatus: "fresh" | "stale" | "missing" = "fresh") 
   };
 }
 
+function makeScopedScrobblesRoute(section: "artists" | "albums" | "tracks", id: string) {
+  return `/${section}/${id}/scrobbles`;
+}
+
+function makeRecentPlay(id: string, name: string, playedAt = "2026-06-03T06:00:00.000Z") {
+  return {
+    id,
+    playedAt,
+    contextType: "playlist",
+    contextUri: "spotify:playlist:test",
+    track: {
+      id: `track_${id}`,
+      name,
+      durationMs: 180000,
+      explicit: false,
+    },
+    album: {
+      id: `album_${id}`,
+      name: "Signals",
+      imageUrl: "https://cdn.test/signals.png",
+    },
+    artists: [{ id: "artist_1", name: "North Coast" }],
+  };
+}
+
+function makeRecentPlaysPageSlice(items: Array<ReturnType<typeof makeRecentPlay>>, nextCursor: string | null = null) {
+  return {
+    items,
+    nextCursor,
+  };
+}
+
 describe("detail page routing", () => {
   it.each([routes.artist("artist_1"), routes.album("album_1"), routes.track("track_1")])(
     "redirects %s to login when no session exists",
@@ -323,7 +369,75 @@ describe("detail page routing", () => {
 });
 
 describe("detail page navigation", () => {
+  it.each([
+    {
+      route: routes.artist("artist_1"),
+      request: "GET /api/artists/artist_1",
+      body: makeArtistDetail("fresh"),
+      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?limit=5",
+      scopedScrobblesHref: makeScopedScrobblesRoute("artists", "artist_1"),
+    },
+    {
+      route: routes.album("album_1"),
+      request: "GET /api/albums/album_1",
+      body: makeAlbumDetail("fresh"),
+      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?limit=5",
+      scopedScrobblesHref: makeScopedScrobblesRoute("albums", "album_1"),
+    },
+    {
+      route: routes.track("track_1"),
+      request: "GET /api/tracks/track_1",
+      body: makeTrackDetail("fresh"),
+      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?limit=5",
+      scopedScrobblesHref: makeScopedScrobblesRoute("tracks", "track_1"),
+    },
+  ])(
+    "shows a scoped View all link and no inline load-more on $route",
+    async ({ route, request, body, recentPlaysRequest, scopedScrobblesHref }) => {
+      installFetchMock({
+        "GET /api/setup/status": { body: makeSetupStatus() },
+        "GET /api/status": { body: makeAppStatus() },
+        [request]: { body },
+        [recentPlaysRequest]: {
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+        },
+      });
+
+      await renderApp(route);
+
+      expect(await screen.findByRole("link", { name: "View all" })).toHaveAttribute("href", scopedScrobblesHref);
+      expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Load more scrobbles" })).not.toBeInTheDocument();
+    },
+  );
+
   it("navigates from the top artist list into the artist detail route", async () => {
+    const topAlbums = [
+      {
+        album: {
+          id: "album_1",
+          name: "Signals",
+          imageUrl: "https://cdn.test/signals.png",
+          routeId: "album_1",
+        },
+        albumType: "album",
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        playCount: 21,
+        lastPlayedAt: "2026-06-03T06:00:00.000Z",
+      },
+      {
+        album: {
+          id: "single_1",
+          name: "Night Drive",
+          imageUrl: "https://cdn.test/night-drive.png",
+          routeId: "single_1",
+        },
+        albumType: "single",
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        playCount: 8,
+        lastPlayedAt: "2026-06-02T06:00:00.000Z",
+      },
+    ];
     const ownReleaseCatalog = [
       {
         id: "album_1",
@@ -349,6 +463,18 @@ describe("detail page navigation", () => {
         artists: [{ id: "artist_1", name: "North Coast" }],
         routeId: "album_2",
       },
+      {
+        id: "single_2",
+        name: "Daybreak",
+        imageUrl: "https://cdn.test/daybreak.png",
+        releaseDate: "2025-06-01",
+        releaseDatePrecision: "day",
+        albumType: "single",
+        totalTracks: 2,
+        spotifyUrl: "https://open.spotify.test/album/single_2",
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        routeId: "single_2",
+      },
     ];
     installFetchMock({
       "GET /api/setup/status": { body: makeSetupStatus() },
@@ -366,6 +492,7 @@ describe("detail page navigation", () => {
       },
       "GET /api/artists/artist_1": {
         body: makeArtistDetail("fresh", {
+          topAlbums,
           catalogAlbums: ownReleaseCatalog,
         }),
       },
@@ -380,25 +507,92 @@ describe("detail page navigation", () => {
     await user.click(await screen.findByRole("link", { name: "North Coast" }));
 
     await waitForPathname(routes.artist("artist_1"));
-    const discographyHeading = await screen.findByText("Discography");
-    const discographySection = discographyHeading.closest("section");
+    const albumsHeading = await screen.findByText(
+      (_, element) => element?.tagName === "H2" && element.textContent === "Albums",
+    );
+    const singlesHeading = await screen.findByText(
+      (_, element) => element?.tagName === "H2" && element.textContent === "Singles",
+    );
+    const albumsSection = albumsHeading.closest("section");
+    const singlesSection = singlesHeading.closest("section");
 
-    expect(discographySection).not.toBeNull();
-    expect(within(discographySection!).getByText("Signals")).toBeInTheDocument();
-    expect(within(discographySection!).getByText("Afterglow")).toBeInTheDocument();
+    expect(albumsSection).not.toBeNull();
+    expect(singlesSection).not.toBeNull();
+    expect(within(albumsSection!).getByText("Signals")).toBeInTheDocument();
+    expect(within(albumsSection!).getByText("Afterglow")).toBeInTheDocument();
+    expect(within(singlesSection!).getByText("Night Drive")).toBeInTheDocument();
+    expect(within(singlesSection!).getByText("Daybreak")).toBeInTheDocument();
     expect(
-      within(discographySection!)
+      within(albumsSection!)
         .getAllByRole("link")
         .some((element) => element.getAttribute("href") === routes.album("album_1")),
     ).toBe(true);
     expect(
-      within(discographySection!)
+      within(albumsSection!)
         .getAllByRole("link")
         .some((element) => element.getAttribute("href") === routes.album("album_2")),
     ).toBe(true);
-    expect(within(discographySection!).queryByText("Beachside Covers")).not.toBeInTheDocument();
-    expect(within(discographySection!).queryByText("Festival Friends Vol. 1")).not.toBeInTheDocument();
-    expect(within(discographySection!).queryByText("Producer Spotlight")).not.toBeInTheDocument();
+    expect(
+      within(singlesSection!)
+        .getAllByRole("link")
+        .some((element) => element.getAttribute("href") === routes.album("single_1")),
+    ).toBe(true);
+    expect(
+      within(singlesSection!)
+        .getAllByRole("link")
+        .some((element) => element.getAttribute("href") === routes.album("single_2")),
+    ).toBe(true);
+    expect(within(albumsSection!).queryByText("Night Drive")).not.toBeInTheDocument();
+    expect(within(singlesSection!).queryByText("Afterglow")).not.toBeInTheDocument();
+  });
+
+  it("hides empty artist release sections", async () => {
+    installFetchMock({
+      "GET /api/setup/status": { body: makeSetupStatus() },
+      "GET /api/status": { body: makeAppStatus() },
+      "GET /api/artists/artist_1": {
+        body: makeArtistDetail("fresh", {
+          topAlbums: [
+            {
+              album: {
+                id: "album_1",
+                name: "Signals",
+                imageUrl: "https://cdn.test/signals.png",
+                routeId: "album_1",
+              },
+              albumType: "album",
+              artists: [{ id: "artist_1", name: "North Coast" }],
+              playCount: 21,
+              lastPlayedAt: "2026-06-03T06:00:00.000Z",
+            },
+          ],
+          catalogAlbums: [
+            {
+              id: "album_2",
+              name: "Afterglow",
+              imageUrl: "https://cdn.test/afterglow.png",
+              releaseDate: "2025-01-01",
+              releaseDatePrecision: "day",
+              albumType: "album",
+              totalTracks: 11,
+              spotifyUrl: "https://open.spotify.test/album/album_2",
+              artists: [{ id: "artist_1", name: "North Coast" }],
+              routeId: "album_2",
+            },
+          ],
+        }),
+      },
+      "GET /api/artists/artist_1/recent-plays?limit=5": {
+        body: makeRecentPlaysPage(),
+      },
+    });
+
+    await renderApp(routes.artist("artist_1"));
+
+    expect(await screen.findByRole("heading", { name: "Albums" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Singles" })).not.toBeInTheDocument();
+    });
   });
 
   it("navigates from the top album and track lists into detail routes", async () => {
@@ -554,6 +748,134 @@ describe("detail page navigation", () => {
 
       await renderApp(route);
       expect(await screen.findByRole("link", { name: linkName })).toHaveAttribute("href", href);
+    },
+  );
+
+  it.each([
+    {
+      route: makeScopedScrobblesRoute("artists", "artist_1"),
+      navName: "Artists",
+      request: "GET /api/artists/artist_1",
+      body: makeArtistDetail("fresh"),
+      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?limit=50",
+      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")]),
+      headingName: "North Coast scrobbles",
+      subtitle: "48 scrobbles",
+      backLabel: "Back to artist",
+      backHref: routes.artist("artist_1"),
+    },
+    {
+      route: makeScopedScrobblesRoute("albums", "album_1"),
+      navName: "Albums",
+      request: "GET /api/albums/album_1",
+      body: makeAlbumDetail("fresh"),
+      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?limit=50",
+      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")]),
+      headingName: "Signals scrobbles",
+      subtitle: "31 scrobbles",
+      backLabel: "Back to album",
+      backHref: routes.album("album_1"),
+    },
+    {
+      route: makeScopedScrobblesRoute("tracks", "track_1"),
+      navName: "Tracks",
+      request: "GET /api/tracks/track_1",
+      body: makeTrackDetail("fresh"),
+      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?limit=50",
+      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Midnight Run")]),
+      headingName: "Midnight Run scrobbles",
+      subtitle: "18 scrobbles",
+      backLabel: "Back to track",
+      backHref: routes.track("track_1"),
+    },
+  ])(
+    "renders contextual scoped scrobbles chrome and keeps $navName active on $route",
+    async ({ route, navName, request, body, recentPlaysRequest, pageOne, headingName, subtitle, backLabel, backHref }) => {
+      installFetchMock({
+        "GET /api/setup/status": { body: makeSetupStatus() },
+        "GET /api/status": { body: makeAppStatus() },
+        [request]: { body },
+        [recentPlaysRequest]: { body: pageOne },
+      });
+
+      await renderApp(route);
+
+      await waitForPathname(route);
+
+      const heading = await screen.findByRole("heading", { name: headingName });
+      const shellHeader = heading.closest("header");
+      expect(shellHeader).not.toBeNull();
+      expect(within(shellHeader!).getByText(subtitle)).toBeInTheDocument();
+      expect(await screen.findByRole("link", { name: backLabel })).toHaveAttribute("href", backHref);
+
+      expect(screen.getByRole("link", { name: navName }).className).toContain("bg-(--accent)");
+      expect(screen.getByRole("link", { name: "Scrobbles" }).className).not.toContain("bg-(--accent)");
+    },
+  );
+
+  it.each([
+    {
+      route: makeScopedScrobblesRoute("artists", "artist_1"),
+      request: "GET /api/artists/artist_1",
+      body: makeArtistDetail("fresh"),
+      pageOneRequest: "GET /api/artists/artist_1/recent-plays?limit=50",
+      pageTwoRequest: "GET /api/artists/artist_1/recent-plays?cursor=cursor_2&limit=50",
+      pageOneLabel: "Midnight Run",
+      pageTwoLabel: "Dawn Echo",
+    },
+    {
+      route: makeScopedScrobblesRoute("albums", "album_1"),
+      request: "GET /api/albums/album_1",
+      body: makeAlbumDetail("fresh"),
+      pageOneRequest: "GET /api/albums/album_1/recent-plays?limit=50",
+      pageTwoRequest: "GET /api/albums/album_1/recent-plays?cursor=cursor_2&limit=50",
+      pageOneLabel: "Midnight Run",
+      pageTwoLabel: "Dawn Echo",
+    },
+    {
+      route: makeScopedScrobblesRoute("tracks", "track_1"),
+      request: "GET /api/tracks/track_1",
+      body: makeTrackDetail("fresh"),
+      pageOneRequest: "GET /api/tracks/track_1/recent-plays?limit=50",
+      pageTwoRequest: "GET /api/tracks/track_1/recent-plays?cursor=cursor_2&limit=50",
+      pageOneLabel: "Midnight Run",
+      pageTwoLabel: "Dawn Echo",
+    },
+  ])(
+    "uses Previous and Next pagination on $route",
+    async ({ route, request, body, pageOneRequest, pageTwoRequest, pageOneLabel, pageTwoLabel }) => {
+      const fetchMock = installFetchMock({
+        "GET /api/setup/status": { body: makeSetupStatus() },
+        "GET /api/status": { body: makeAppStatus() },
+        [request]: { body },
+        [pageOneRequest]: {
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+        },
+        [pageTwoRequest]: {
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")]),
+        },
+      });
+
+      await renderApp(route);
+
+      expect(await screen.findByText(pageOneLabel)).toBeInTheDocument();
+      expect(screen.getByText("Page 1")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Next" }));
+
+      expect(await screen.findByText(pageTwoLabel)).toBeInTheDocument();
+      expect(screen.getByText("Page 2")).toBeInTheDocument();
+      expect(fetchMock.calls.map((call) => call.url)).toContain(pageTwoRequest.replace("GET ", ""));
+
+      await user.click(screen.getByRole("button", { name: "Previous" }));
+
+      expect(await screen.findByText(pageOneLabel)).toBeInTheDocument();
+      expect(screen.getByText("Page 1")).toBeInTheDocument();
     },
   );
 });

@@ -196,9 +196,14 @@ export function AlbumDetailPage() {
             title="Recent scrobbles"
             description="Most recent scrobbles collected for this album."
             items={recentPlays}
-            onLoadMore={() => recentPlaysQuery.fetchNextPage()}
-            hasMore={recentPlaysQuery.hasNextPage}
-            isLoadingMore={recentPlaysQuery.isFetchingNextPage}
+            action={
+              <Link
+                to={routes.albumScrobbles(detail.album.id)}
+                className="text-sm font-medium text-(--text-secondary) transition hover:text-(--text-primary)"
+              >
+                View all
+              </Link>
+            }
           />
         </div>
       ) : null}

@@ -7,10 +7,13 @@ export const routes = {
   scrobbles: "/scrobbles",
   artists: "/artists",
   artist: (id: string) => `/artists/${id}`,
+  artistScrobbles: (id: string) => `/artists/${id}/scrobbles`,
   albums: "/albums",
   album: (id: string) => `/albums/${id}`,
+  albumScrobbles: (id: string) => `/albums/${id}/scrobbles`,
   tracks: "/tracks",
   track: (id: string) => `/tracks/${id}`,
+  trackScrobbles: (id: string) => `/tracks/${id}/scrobbles`,
   settings: "/settings",
 } as const;
 
@@ -38,19 +41,19 @@ export const primaryNavItems: PrimaryNavItem[] = [
     key: "artists",
     label: "Artists",
     to: routes.artists,
-    patterns: [routes.artists, `${routes.artists}/:id`],
+    patterns: [routes.artists, `${routes.artists}/:id`, `${routes.artists}/:id/scrobbles`],
   },
   {
     key: "albums",
     label: "Albums",
     to: routes.albums,
-    patterns: [routes.albums, `${routes.albums}/:id`],
+    patterns: [routes.albums, `${routes.albums}/:id`, `${routes.albums}/:id/scrobbles`],
   },
   {
     key: "tracks",
     label: "Tracks",
     to: routes.tracks,
-    patterns: [routes.tracks, `${routes.tracks}/:id`],
+    patterns: [routes.tracks, `${routes.tracks}/:id`, `${routes.tracks}/:id/scrobbles`],
   },
   {
     key: "settings",

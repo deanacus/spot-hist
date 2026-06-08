@@ -212,6 +212,7 @@ export function RecentPlaysSection({
   title,
   description,
   items,
+  action,
   onLoadMore,
   hasMore,
   isLoadingMore,
@@ -219,13 +220,14 @@ export function RecentPlaysSection({
   title: string;
   description: string;
   items: HistoryItem[];
+  action?: ReactNode;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
 }) {
   return (
     <section className="space-y-4">
-      <SectionHeader title={title} description={description} />
+      <SectionHeader title={title} description={description} action={action} />
       {items.length === 0 ? (
         <p className="text-sm text-(--text-subdued)">
           No scrobbles have been collected for this view yet.

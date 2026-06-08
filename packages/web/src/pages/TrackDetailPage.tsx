@@ -166,9 +166,14 @@ export function TrackDetailPage() {
             title="Recent scrobbles"
             description="Most recent scrobbles collected for this track."
             items={recentPlays}
-            onLoadMore={() => recentPlaysQuery.fetchNextPage()}
-            hasMore={recentPlaysQuery.hasNextPage}
-            isLoadingMore={recentPlaysQuery.isFetchingNextPage}
+            action={
+              <Link
+                to={routes.trackScrobbles(detail.track.id)}
+                className="text-sm font-medium text-(--text-secondary) transition hover:text-(--text-primary)"
+              >
+                View all
+              </Link>
+            }
           />
 
           {/* Album tracklist */}

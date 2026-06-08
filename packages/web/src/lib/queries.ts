@@ -5,6 +5,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import {
   api,
@@ -12,6 +13,7 @@ import {
   type AppStatus,
   type AlbumDetailPage,
   type ArtistDetailPage,
+  type HistoryPage,
   type SetupStatus,
   type TrackDetailPage,
 } from "./api";
@@ -34,9 +36,21 @@ export const queryKeys = {
   albumDetail: (id: string) => ["album-detail", id] as const,
   trackDetail: (id: string) => ["track-detail", id] as const,
   artistRecentPlays: (id: string, limit: number) => ["artist-recent-plays", id, limit] as const,
+  artistRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
+    ["artist-recent-plays", id, limit, cursor] as const,
   albumRecentPlays: (id: string, limit: number) => ["album-recent-plays", id, limit] as const,
+  albumRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
+    ["album-recent-plays", id, limit, cursor] as const,
   trackRecentPlays: (id: string, limit: number) => ["track-recent-plays", id, limit] as const,
+  trackRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
+    ["track-recent-plays", id, limit, cursor] as const,
 };
+
+export type ScrobbleScope =
+  | { kind: "all" }
+  | { kind: "artist"; id: string }
+  | { kind: "album"; id: string }
+  | { kind: "track"; id: string };
 
 export function isUnauthorizedError(error: unknown) {
   return error instanceof ApiError && error.status === 401;
@@ -92,7 +106,40 @@ async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ["artist-detail"] }),
     queryClient.invalidateQueries({ queryKey: ["album-detail"] }),
     queryClient.invalidateQueries({ queryKey: ["track-detail"] }),
+    queryClient.invalidateQueries({ queryKey: ["artist-recent-plays"] }),
+    queryClient.invalidateQueries({ queryKey: ["album-recent-plays"] }),
+    queryClient.invalidateQueries({ queryKey: ["track-recent-plays"] }),
   ]);
+}
+
+function getScopedHistoryQueryKey(scope: ScrobbleScope, limit: number, cursor: string | null) {
+  switch (scope.kind) {
+    case "all":
+      return queryKeys.historyPage(limit, cursor);
+    case "artist":
+      return queryKeys.artistRecentPlaysPage(scope.id, limit, cursor);
+    case "album":
+      return queryKeys.albumRecentPlaysPage(scope.id, limit, cursor);
+    case "track":
+      return queryKeys.trackRecentPlaysPage(scope.id, limit, cursor);
+  }
+}
+
+async function fetchScopedHistoryPage(
+  scope: ScrobbleScope,
+  cursor: string | null,
+  limit: number,
+): Promise<HistoryPage> {
+  switch (scope.kind) {
+    case "all":
+      return api.getHistory(cursor, limit);
+    case "artist":
+      return api.getArtistRecentPlays(scope.id, cursor, limit);
+    case "album":
+      return api.getAlbumRecentPlays(scope.id, cursor, limit);
+    case "track":
+      return api.getTrackRecentPlays(scope.id, cursor, limit);
+  }
 }
 
 export function useBootstrapQuery() {
@@ -113,12 +160,62 @@ export function useStatsQuery(enabled: boolean) {
 }
 
 export function useHistoryPageQuery(enabled: boolean, cursor: string | null, limit = 25) {
+  return useScopedHistoryPageQuery(enabled, { kind: "all" }, cursor, limit);
+}
+
+export function useScopedHistoryPageQuery(
+  enabled: boolean,
+  scope: ScrobbleScope,
+  cursor: string | null,
+  limit = 25,
+) {
   return useQuery({
-    queryKey: queryKeys.historyPage(limit, cursor),
-    queryFn: () => api.getHistory(cursor, limit),
-    enabled,
+    queryKey: getScopedHistoryQueryKey(scope, limit, cursor),
+    queryFn: () => fetchScopedHistoryPage(scope, cursor, limit),
+    enabled: enabled && (scope.kind === "all" || Boolean(scope.id)),
     staleTime: 15_000,
   });
+}
+
+export function useCursorPageState(resetKey: string | null | undefined) {
+  const [pageIndex, setPageIndex] = useState(0);
+  const [cursors, setCursors] = useState<Array<string | null>>([null]);
+  const currentCursor = cursors[pageIndex] ?? null;
+
+  useEffect(() => {
+    setPageIndex(0);
+    setCursors([null]);
+  }, [resetKey]);
+
+  const goPrevious = () => {
+    setPageIndex((currentPageIndex) => (currentPageIndex > 0 ? currentPageIndex - 1 : currentPageIndex));
+  };
+
+  const goNext = (nextCursor: string | null | undefined) => {
+    if (!nextCursor) {
+      return;
+    }
+
+    setPageIndex((currentPageIndex) => {
+      setCursors((currentCursors) => {
+        if (currentCursors[currentPageIndex + 1] === nextCursor) {
+          return currentCursors;
+        }
+
+        return [...currentCursors.slice(0, currentPageIndex + 1), nextCursor];
+      });
+
+      return currentPageIndex + 1;
+    });
+  };
+
+  return {
+    pageIndex,
+    currentCursor,
+    canGoPrevious: pageIndex > 0,
+    goPrevious,
+    goNext,
+  };
 }
 
 export function useTopArtistsQuery(enabled: boolean, limit = 50) {
