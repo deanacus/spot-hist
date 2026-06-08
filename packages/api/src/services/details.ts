@@ -421,6 +421,36 @@ function mapCatalogAlbum(
   };
 }
 
+function isOwnReleaseType(albumType: string | null | undefined) {
+  return albumType === "album" || albumType === "single";
+}
+
+function isPrimaryArtistCredit(
+  artistId: string,
+  creditedArtists: Array<{ id: string }> | null | undefined,
+) {
+  return (creditedArtists?.[0]?.id ?? null) === artistId;
+}
+
+function isOwnCatalogAlbum(artistId: string, album: SpotifyAlbum) {
+  const releaseType = album.album_group ?? album.album_type;
+  return isOwnReleaseType(releaseType) && isPrimaryArtistCredit(artistId, album.artists);
+}
+
+function isConservativeLocalOwnTopAlbum(
+  artistId: string,
+  item: {
+    albumType: string;
+    artists: ArtistSummary[];
+  },
+) {
+  return (
+    isOwnReleaseType(item.albumType) &&
+    item.artists.length === 1 &&
+    isPrimaryArtistCredit(artistId, item.artists)
+  );
+}
+
 async function getAlbumIdSet(database: DatabaseContext, spotifyIds: string[]) {
   if (spotifyIds.length === 0) {
     return new Set<string>();
@@ -438,11 +468,14 @@ async function refreshArtistCache(database: DatabaseContext, spotify: SpotifyCli
   const accessToken = await requireSpotifyAccessToken(database, spotify);
   const [artistDetail, artistAlbums] = await Promise.all([
     spotify.fetchArtist(accessToken, artist.spotifyId),
-    spotify.fetchArtistAlbums(accessToken, artist.spotifyId),
+    spotify.fetchArtistAlbums(accessToken, artist.spotifyId, {
+      includeGroups: ["album", "single"],
+    }),
   ]);
+  const ownArtistAlbums = artistAlbums.items.filter((album) => isOwnCatalogAlbum(artist.spotifyId, album));
   const localAlbumIds = await getAlbumIdSet(
     database,
-    artistAlbums.items.map((item) => item.id),
+    ownArtistAlbums.map((item) => item.id),
   );
   const fetchedAt = isoNow();
 
@@ -453,7 +486,7 @@ async function refreshArtistCache(database: DatabaseContext, spotify: SpotifyCli
     genresJson: JSON.stringify(artistDetail.genres),
     imagesJson: JSON.stringify(mapImages(artistDetail.images)),
     catalogAlbumsJson: JSON.stringify(
-      artistAlbums.items.map((album) => mapCatalogAlbum(album, localAlbumIds)),
+      ownArtistAlbums.map((album) => mapCatalogAlbum(album, localAlbumIds)),
     ),
     fetchedAt,
     refreshAfter: nextRefreshAt(),
@@ -781,7 +814,7 @@ async function getTopTracksForArtist(database: DatabaseContext, artistId: number
   }));
 }
 
-async function getTopAlbumsForArtist(database: DatabaseContext, artistId: number, limit = 10) {
+async function getTopAlbumsForArtist(database: DatabaseContext, artistId: number) {
   const rows = database.client
     .prepare(
       `
@@ -790,6 +823,7 @@ async function getTopAlbumsForArtist(database: DatabaseContext, artistId: number
         albums.spotify_id AS album_spotify_id,
         albums.name AS album_name,
         albums.image_url AS album_image_url,
+        albums.album_type AS album_type,
         COUNT(plays.id) AS play_count,
         MAX(plays.played_at) AS last_played_at
       FROM track_artists
@@ -799,14 +833,14 @@ async function getTopAlbumsForArtist(database: DatabaseContext, artistId: number
       WHERE track_artists.artist_id = ?
       GROUP BY albums.id
       ORDER BY play_count DESC, albums.name COLLATE NOCASE ASC, albums.spotify_id ASC
-      LIMIT ?
       `,
     )
-    .all(artistId, limit) as Array<{
+    .all(artistId) as Array<{
       album_id: number;
       album_spotify_id: string;
       album_name: string;
       album_image_url: string | null;
+      album_type: string;
       play_count: number;
       last_played_at: string | null;
     }>;
@@ -823,6 +857,7 @@ async function getTopAlbumsForArtist(database: DatabaseContext, artistId: number
       imageUrl: row.album_image_url,
       routeId: row.album_spotify_id,
     },
+    albumType: row.album_type,
     artists: artistMap.get(row.album_id) ?? [],
     playCount: row.play_count,
     lastPlayedAt: row.last_played_at,
@@ -1156,6 +1191,17 @@ async function getArtistPage(database: DatabaseContext, artist: LocalArtistRow):
     getTopAlbumsForArtist(database, artist.id),
     getRecentPlaysForArtist(database, artist.id),
   ]);
+  const catalogAlbums = parseJson(detailRow?.catalogAlbumsJson, [] as ArtistDetailPage["catalogAlbums"]).filter(
+    (album) => isOwnReleaseType(album.albumType) && isPrimaryArtistCredit(artist.spotifyId, album.artists),
+  );
+  const ownCatalogAlbumIds = new Set(catalogAlbums.map((album) => album.id));
+  const filteredTopAlbums = topAlbums
+    .filter((item) =>
+      ownCatalogAlbumIds.size > 0
+        ? ownCatalogAlbumIds.has(item.album.id)
+        : isConservativeLocalOwnTopAlbum(artist.spotifyId, item),
+    )
+    .slice(0, 10);
 
   return {
     detailStatus: getDetailStatus(detailRow),
@@ -1180,9 +1226,15 @@ async function getArtistPage(database: DatabaseContext, artist: LocalArtistRow):
       playCount: item.playCount,
       lastPlayedAt: item.lastPlayedAt,
     })),
-    topAlbums,
+    topAlbums: filteredTopAlbums
+      .map((item) => ({
+        album: item.album,
+        artists: item.artists,
+        playCount: item.playCount,
+        lastPlayedAt: item.lastPlayedAt,
+      })),
     recentPlays,
-    catalogAlbums: parseJson(detailRow?.catalogAlbumsJson, [] as ArtistDetailPage["catalogAlbums"]),
+    catalogAlbums,
   };
 }
 

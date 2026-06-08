@@ -20,6 +20,7 @@ export interface SpotifyAlbum {
   id: string;
   name: string;
   album_type: string;
+  album_group?: string;
   total_tracks: number;
   release_date: string;
   release_date_precision: string;

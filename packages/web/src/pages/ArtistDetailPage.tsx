@@ -136,11 +136,11 @@ export function ArtistDetailPage() {
           <StatRow
             items={[
               { label: 'Rank', value: detail.stats.rank ? `#${detail.stats.rank}` : '—' },
-              { label: 'Total plays', value: formatPlayCount(detail.stats.totalPlays) },
+              { label: 'Total scrobbles', value: formatPlayCount(detail.stats.totalPlays) },
               { label: 'Unique tracks', value: detail.stats.uniqueTracks.toLocaleString() },
               { label: 'Unique albums', value: detail.stats.uniqueAlbums.toLocaleString() },
-              { label: 'First played', value: formatDateTime(detail.stats.firstPlayedAt) },
-              { label: 'Last played', value: formatDateTime(detail.stats.lastPlayedAt) },
+              { label: 'First scrobbled', value: formatDateTime(detail.stats.firstPlayedAt) },
+              { label: 'Last scrobbled', value: formatDateTime(detail.stats.lastPlayedAt) },
             ]}
           />
 
@@ -185,7 +185,7 @@ export function ArtistDetailPage() {
                       </p>
                     </div>
                     <span className="text-sm tabular-nums text-(--text-secondary)">
-                      {item.playCount.toLocaleString()} plays
+                      {item.playCount.toLocaleString()} scrobbles
                     </span>
                   </div>
                 ))}
@@ -193,10 +193,10 @@ export function ArtistDetailPage() {
             )}
           </section>
 
-          {/* Recent plays */}
+          {/* Recent scrobbles */}
           <RecentPlaysSection
-            title="Recent plays"
-            description="Most recent plays that included this artist."
+            title="Recent scrobbles"
+            description="Most recent scrobbles that included this artist."
             items={recentPlays}
             onLoadMore={() => recentPlaysQuery.fetchNextPage()}
             hasMore={recentPlaysQuery.hasNextPage}
@@ -210,57 +210,96 @@ export function ArtistDetailPage() {
               <div className="grid gap-x-4 gap-y-5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {detail.topAlbums.map((item) => (
                   <div key={item.album.id}>
-                    <AlbumArt
-                      imageUrl={item.album.imageUrl}
-                      alt={`${item.album.name} album art`}
-                      fallbackLabel="LP"
-                      className="w-full aspect-square"
-                    />
-                    <p className="mt-2 truncate text-sm font-medium">
-                      {item.album.routeId ? (
-                        <Link to={routes.album(item.album.routeId)} className="hover:underline">
+                    {item.album.routeId ? (
+                      <Link
+                        to={routes.album(item.album.routeId)}
+                        className="group block rounded transition hover:text-(--text-primary)"
+                      >
+                        <AlbumArt
+                          imageUrl={item.album.imageUrl}
+                          alt={`${item.album.name} album art`}
+                          fallbackLabel="LP"
+                          className="w-full aspect-square"
+                        />
+                        <p className="mt-2 truncate text-sm font-medium group-hover:underline">
                           {item.album.name}
-                        </Link>
-                      ) : (
-                        item.album.name
-                      )}
-                    </p>
-                    <p className="text-xs text-(--text-subdued)">
-                      {item.playCount.toLocaleString()} plays
-                    </p>
+                        </p>
+                        <p className="text-xs text-(--text-subdued)">
+                          {item.playCount.toLocaleString()} scrobbles
+                        </p>
+                      </Link>
+                    ) : (
+                      <>
+                        <AlbumArt
+                          imageUrl={item.album.imageUrl}
+                          alt={`${item.album.name} album art`}
+                          fallbackLabel="LP"
+                          className="w-full aspect-square"
+                        />
+                        <p className="mt-2 truncate text-sm font-medium">{item.album.name}</p>
+                        <p className="text-xs text-(--text-subdued)">
+                          {item.playCount.toLocaleString()} scrobbles
+                        </p>
+                      </>
+                    )}
                   </div>
                 ))}
                 {detail.catalogAlbums
                   .filter((album) => !detail.topAlbums.some((ta) => ta.album.id === album.id))
                   .map((album) => (
                     <div key={album.id}>
-                      <AlbumArt
-                        imageUrl={album.imageUrl}
-                        alt={`${album.name} album art`}
-                        fallbackLabel="LP"
-                        className="w-full aspect-square"
-                      />
-                      <p className="mt-2 truncate text-sm font-medium">
-                        {album.routeId ? (
-                          <Link to={routes.album(album.routeId)} className="hover:underline">
+                      {album.routeId ? (
+                        <Link
+                          to={routes.album(album.routeId)}
+                          className="group block rounded transition hover:text-(--text-primary)"
+                        >
+                          <AlbumArt
+                            imageUrl={album.imageUrl}
+                            alt={`${album.name} album art`}
+                            fallbackLabel="LP"
+                            className="w-full aspect-square"
+                          />
+                          <p className="mt-2 truncate text-sm font-medium group-hover:underline">
                             {album.name}
-                          </Link>
-                        ) : album.spotifyUrl ? (
-                          <a
-                            href={album.spotifyUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="hover:underline"
-                          >
+                          </p>
+                          <p className="text-xs text-(--text-subdued)">
+                            {album.albumType ?? 'release'} • {album.totalTracks ?? '?'} tracks
+                          </p>
+                        </Link>
+                      ) : album.spotifyUrl ? (
+                        <a
+                          href={album.spotifyUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="group block rounded transition hover:text-(--text-primary)"
+                        >
+                          <AlbumArt
+                            imageUrl={album.imageUrl}
+                            alt={`${album.name} album art`}
+                            fallbackLabel="LP"
+                            className="w-full aspect-square"
+                          />
+                          <p className="mt-2 truncate text-sm font-medium group-hover:underline">
                             {album.name}
-                          </a>
-                        ) : (
-                          album.name
-                        )}
-                      </p>
-                      <p className="text-xs text-(--text-subdued)">
-                        {album.albumType ?? 'release'} • {album.totalTracks ?? '?'} tracks
-                      </p>
+                          </p>
+                          <p className="text-xs text-(--text-subdued)">
+                            {album.albumType ?? 'release'} • {album.totalTracks ?? '?'} tracks
+                          </p>
+                        </a>
+                      ) : (
+                        <>
+                          <AlbumArt
+                            imageUrl={album.imageUrl}
+                            alt={`${album.name} album art`}
+                            fallbackLabel="LP"
+                            className="w-full aspect-square"
+                          />
+                          <p className="mt-2 truncate text-sm font-medium">{album.name}</p>
+                          <p className="text-xs text-(--text-subdued)">
+                            {album.albumType ?? 'release'} • {album.totalTracks ?? '?'} tracks
+                          </p>
+                        </>
+                      )}
                     </div>
                   ))}
               </div>

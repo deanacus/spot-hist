@@ -1,8 +1,34 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routes } from "../lib/routes";
 import { installFetchMock, renderApp, waitForPathname } from "./harness";
+
+function makeRecentPlaysPage() {
+  return {
+    items: [
+      {
+        id: "play_1",
+        playedAt: "2026-06-03T06:00:00.000Z",
+        contextType: "playlist",
+        contextUri: "spotify:playlist:test",
+        track: {
+          id: "track_1",
+          name: "Midnight Run",
+          durationMs: 180000,
+          explicit: false,
+        },
+        album: {
+          id: "album_1",
+          name: "Signals",
+          imageUrl: "https://cdn.test/signals.png",
+        },
+        artists: [{ id: "artist_1", name: "North Coast" }],
+      },
+    ],
+    nextCursor: null,
+  };
+}
 
 function makeSetupStatus() {
   return { setupComplete: true, spotifyConnected: true, passwordSet: true };
@@ -23,7 +49,23 @@ function makeAppStatus() {
   };
 }
 
-function makeArtistDetail(detailStatus: "fresh" | "stale" | "missing" = "fresh") {
+function makeArtistDetail(
+  detailStatus: "fresh" | "stale" | "missing" = "fresh",
+  options?: {
+    catalogAlbums?: Array<{
+      id: string;
+      name: string;
+      imageUrl: string | null;
+      releaseDate: string;
+      releaseDatePrecision: string;
+      albumType: string;
+      totalTracks: number;
+      spotifyUrl: string | null;
+      artists: Array<{ id: string; name: string }>;
+      routeId: string | null;
+    }>;
+  },
+) {
   const enriched = detailStatus === "fresh";
 
   return {
@@ -93,42 +135,25 @@ function makeArtistDetail(detailStatus: "fresh" | "stale" | "missing" = "fresh")
         lastPlayedAt: "2026-06-03T06:00:00.000Z",
       },
     ],
-    recentPlays: [
-      {
-        id: "play_1",
-        playedAt: "2026-06-03T06:00:00.000Z",
-        contextType: "playlist",
-        contextUri: "spotify:playlist:test",
-        track: {
-          id: "track_1",
-          name: "Midnight Run",
-          durationMs: 180000,
-          explicit: false,
-        },
-        album: {
-          id: "album_1",
-          name: "Signals",
-          imageUrl: "https://cdn.test/signals.png",
-        },
-        artists: [{ id: "artist_1", name: "North Coast" }],
-      },
-    ],
-    catalogAlbums: enriched
-      ? [
-          {
-            id: "album_2",
-            name: "Afterglow",
-            imageUrl: "https://cdn.test/afterglow.png",
-            releaseDate: "2025-01-01",
-            releaseDatePrecision: "day",
-            albumType: "album",
-            totalTracks: 11,
-            spotifyUrl: "https://open.spotify.test/album/album_2",
-            artists: [{ id: "artist_1", name: "North Coast" }],
-            routeId: "album_2",
-          },
-        ]
-      : [],
+    recentPlays: makeRecentPlaysPage().items,
+    catalogAlbums:
+      options?.catalogAlbums ??
+      (enriched
+        ? [
+            {
+              id: "album_2",
+              name: "Afterglow",
+              imageUrl: "https://cdn.test/afterglow.png",
+              releaseDate: "2025-01-01",
+              releaseDatePrecision: "day",
+              albumType: "album",
+              totalTracks: 11,
+              spotifyUrl: "https://open.spotify.test/album/album_2",
+              artists: [{ id: "artist_1", name: "North Coast" }],
+              routeId: "album_2",
+            },
+          ]
+        : []),
   };
 }
 
@@ -299,10 +324,36 @@ describe("detail page routing", () => {
 
 describe("detail page navigation", () => {
   it("navigates from the top artist list into the artist detail route", async () => {
+    const ownReleaseCatalog = [
+      {
+        id: "album_1",
+        name: "Signals",
+        imageUrl: "https://cdn.test/signals.png",
+        releaseDate: "2024-04-01",
+        releaseDatePrecision: "day",
+        albumType: "album",
+        totalTracks: 10,
+        spotifyUrl: "https://open.spotify.test/album/album_1",
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        routeId: "album_1",
+      },
+      {
+        id: "album_2",
+        name: "Afterglow",
+        imageUrl: "https://cdn.test/afterglow.png",
+        releaseDate: "2025-01-01",
+        releaseDatePrecision: "day",
+        albumType: "album",
+        totalTracks: 11,
+        spotifyUrl: "https://open.spotify.test/album/album_2",
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        routeId: "album_2",
+      },
+    ];
     installFetchMock({
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
-      "GET /api/top/artists": {
+      "GET /api/top/artists?limit=50": {
         body: {
           items: [
             {
@@ -313,7 +364,14 @@ describe("detail page navigation", () => {
           ],
         },
       },
-      "GET /api/artists/artist_1": { body: makeArtistDetail("fresh") },
+      "GET /api/artists/artist_1": {
+        body: makeArtistDetail("fresh", {
+          catalogAlbums: ownReleaseCatalog,
+        }),
+      },
+      "GET /api/artists/artist_1/recent-plays?limit=5": {
+        body: makeRecentPlaysPage(),
+      },
     });
 
     await renderApp(routes.artists);
@@ -322,14 +380,32 @@ describe("detail page navigation", () => {
     await user.click(await screen.findByRole("link", { name: "North Coast" }));
 
     await waitForPathname(routes.artist("artist_1"));
-    expect(await screen.findByText("Discography")).toBeInTheDocument();
+    const discographyHeading = await screen.findByText("Discography");
+    const discographySection = discographyHeading.closest("section");
+
+    expect(discographySection).not.toBeNull();
+    expect(within(discographySection!).getByText("Signals")).toBeInTheDocument();
+    expect(within(discographySection!).getByText("Afterglow")).toBeInTheDocument();
+    expect(
+      within(discographySection!)
+        .getAllByRole("link")
+        .some((element) => element.getAttribute("href") === routes.album("album_1")),
+    ).toBe(true);
+    expect(
+      within(discographySection!)
+        .getAllByRole("link")
+        .some((element) => element.getAttribute("href") === routes.album("album_2")),
+    ).toBe(true);
+    expect(within(discographySection!).queryByText("Beachside Covers")).not.toBeInTheDocument();
+    expect(within(discographySection!).queryByText("Festival Friends Vol. 1")).not.toBeInTheDocument();
+    expect(within(discographySection!).queryByText("Producer Spotlight")).not.toBeInTheDocument();
   });
 
   it("navigates from the top album and track lists into detail routes", async () => {
     installFetchMock({
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
-      "GET /api/top/albums": {
+      "GET /api/top/albums?limit=50": {
         body: {
           items: [
             {
@@ -342,7 +418,8 @@ describe("detail page navigation", () => {
         },
       },
       "GET /api/albums/album_1": { body: makeAlbumDetail("fresh") },
-      "GET /api/top/tracks": {
+      "GET /api/albums/album_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/top/tracks?limit=50": {
         body: {
           items: [
             {
@@ -356,6 +433,7 @@ describe("detail page navigation", () => {
         },
       },
       "GET /api/tracks/track_1": { body: makeTrackDetail("fresh") },
+      "GET /api/tracks/track_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.albums);
@@ -372,7 +450,7 @@ describe("detail page navigation", () => {
     expect(await screen.findByText("Album tracklist")).toBeInTheDocument();
   });
 
-  it("links dashboard recent-play rows into track, album, and artist detail pages", async () => {
+  it("links home page scrobble rows into track, album, and artist detail pages", async () => {
     installFetchMock({
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
@@ -385,7 +463,7 @@ describe("detail page navigation", () => {
           latestPlayAt: "2026-06-03T06:00:00.000Z",
         },
       },
-      "GET /api/history?limit=50": {
+      "GET /api/history?limit=10": {
         body: {
           items: [
             {
@@ -401,10 +479,26 @@ describe("detail page navigation", () => {
           nextCursor: null,
         },
       },
+      "GET /api/top/artists?limit=10": {
+        body: {
+          items: [],
+        },
+      },
+      "GET /api/top/albums?limit=10": {
+        body: {
+          items: [],
+        },
+      },
+      "GET /api/top/tracks?limit=10": {
+        body: {
+          items: [],
+        },
+      },
       "GET /api/tracks/track_1": { body: makeTrackDetail("fresh") },
+      "GET /api/tracks/track_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
     });
 
-    await renderApp("/dashboard");
+    await renderApp(routes.home);
 
     expect(await screen.findByRole("link", { name: "Midnight Run" })).toHaveAttribute(
       "href",
@@ -428,6 +522,7 @@ describe("detail page navigation", () => {
       route: routes.artist("artist_1"),
       request: "GET /api/artists/artist_1",
       body: makeArtistDetail("fresh"),
+      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?limit=5",
       linkName: "Back to artists",
       href: routes.artists,
     },
@@ -435,6 +530,7 @@ describe("detail page navigation", () => {
       route: routes.album("album_1"),
       request: "GET /api/albums/album_1",
       body: makeAlbumDetail("fresh"),
+      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?limit=5",
       linkName: "Back to albums",
       href: routes.albums,
     },
@@ -442,19 +538,24 @@ describe("detail page navigation", () => {
       route: routes.track("track_1"),
       request: "GET /api/tracks/track_1",
       body: makeTrackDetail("fresh"),
+      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?limit=5",
       linkName: "Back to tracks",
       href: routes.tracks,
     },
-  ])("shows the parent section link on $route", async ({ route, request, body, linkName, href }) => {
-    installFetchMock({
-      "GET /api/setup/status": { body: makeSetupStatus() },
-      "GET /api/status": { body: makeAppStatus() },
-      [request]: { body },
-    });
+  ])(
+    "shows the parent section link on $route",
+    async ({ route, request, body, recentPlaysRequest, linkName, href }) => {
+      installFetchMock({
+        "GET /api/setup/status": { body: makeSetupStatus() },
+        "GET /api/status": { body: makeAppStatus() },
+        [request]: { body },
+        [recentPlaysRequest]: { body: makeRecentPlaysPage() },
+      });
 
-    await renderApp(route);
-    expect(await screen.findByRole("link", { name: linkName })).toHaveAttribute("href", href);
-  });
+      await renderApp(route);
+      expect(await screen.findByRole("link", { name: linkName })).toHaveAttribute("href", href);
+    },
+  );
 });
 
 describe("detail page refresh behavior", () => {
@@ -470,6 +571,7 @@ describe("detail page refresh behavior", () => {
         { body: makeArtistDetail("missing") },
         { body: makeArtistDetail("fresh") },
       ],
+      "GET /api/artists/artist_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
       "POST /api/artists/artist_1/refresh": async () => {
         await refreshGate;
         return { body: makeArtistDetail("fresh") };
@@ -500,6 +602,7 @@ describe("detail page refresh behavior", () => {
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
       "GET /api/albums/album_1": { body: makeAlbumDetail("stale") },
+      "GET /api/albums/album_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
       "POST /api/albums/album_1/refresh": {
         status: 429,
         body: { message: "Spotify rate limit reached. Try again later." },
@@ -526,6 +629,7 @@ describe("detail page imagery", () => {
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
       "GET /api/albums/album_1": { body: makeAlbumDetail("fresh") },
+      "GET /api/albums/album_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.album("album_1"));
@@ -542,6 +646,7 @@ describe("detail page imagery", () => {
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
       "GET /api/tracks/track_1": { body: makeTrackDetail("fresh") },
+      "GET /api/tracks/track_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.track("track_1"));

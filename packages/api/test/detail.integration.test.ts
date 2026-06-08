@@ -468,7 +468,6 @@ describe("detail page endpoints", () => {
       })),
     ).toEqual([
       { id: "album-alpha", playCount: 4 },
-      { id: "album-collab", playCount: 2 },
     ]);
     expect(body.recentPlays.map((item: any) => item.playedAt)).toEqual([
       "2024-01-07T00:00:00.000Z",
@@ -476,7 +475,6 @@ describe("detail page endpoints", () => {
       "2024-01-03T00:00:00.000Z",
       "2024-01-02T00:00:00.000Z",
       "2024-01-01T01:00:00.000Z",
-      "2024-01-01T00:00:00.000Z",
     ]);
     expect(fetchArtist).not.toHaveBeenCalled();
     expect(fetchArtistAlbums).not.toHaveBeenCalled();

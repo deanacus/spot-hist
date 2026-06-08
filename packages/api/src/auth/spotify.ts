@@ -19,7 +19,11 @@ export interface SpotifyClient {
   fetchProfile(accessToken: string): Promise<SpotifyUserProfile>;
   fetchRecentlyPlayed(accessToken: string, after?: number): Promise<SpotifyRecentlyPlayedResponse>;
   fetchArtist(accessToken: string, artistId: string): Promise<SpotifyArtistDetail>;
-  fetchArtistAlbums(accessToken: string, artistId: string): Promise<SpotifyArtistAlbumsResponse>;
+  fetchArtistAlbums(
+    accessToken: string,
+    artistId: string,
+    options?: { includeGroups?: string[] },
+  ): Promise<SpotifyArtistAlbumsResponse>;
   fetchAlbum(accessToken: string, albumId: string): Promise<SpotifyAlbumDetail>;
   fetchTrack(accessToken: string, trackId: string): Promise<SpotifyTrackDetail>;
   encrypt(value: string): string;
@@ -140,10 +144,13 @@ export function createSpotifyClient(config: AppConfig): SpotifyClient {
     async fetchArtist(accessToken, artistId) {
       return spotifyGet<SpotifyArtistDetail>(accessToken, `/artists/${artistId}`);
     },
-    async fetchArtistAlbums(accessToken, artistId) {
+    async fetchArtistAlbums(accessToken, artistId, options) {
       const items: SpotifyArtistAlbumsResponse["items"] = [];
       let nextUrl: URL | null = new URL(`https://api.spotify.com/v1/artists/${artistId}/albums`);
       nextUrl.searchParams.set("limit", "50");
+      if (options?.includeGroups?.length) {
+        nextUrl.searchParams.set("include_groups", options.includeGroups.join(","));
+      }
 
       while (nextUrl) {
         const page: SpotifyArtistAlbumsResponse = await spotifyGetUrl<SpotifyArtistAlbumsResponse>(accessToken, nextUrl);
