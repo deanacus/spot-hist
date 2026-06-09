@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { formatPlayCount } from "../components/DetailUi";
+import { DetailPageState, formatPlayCount } from "../components/DetailUi";
 import { Pagination } from "../components/Pagination";
 import { ScrobbleList } from "../components/ScrobbleList";
 import { EmptyState, InlineNotice, Shell } from "../components/Ui";
@@ -36,21 +36,16 @@ type ScopedScrobblesLayoutProps = {
   detailErrorFallback: string;
 };
 
-function ScopedScrobblesLayout({
+function useScopedScrobblesPageState({
   id,
   page,
-  title,
-  subtitle,
-  backTo,
-  backLabel,
-  emptyTitle,
-  emptyBody,
-  getPageHref,
   scope,
-  detailPending,
   detailError,
   detailErrorFallback,
-}: ScopedScrobblesLayoutProps) {
+}: Pick<
+  ScopedScrobblesLayoutProps,
+  "id" | "page" | "scope" | "detailError" | "detailErrorFallback"
+>) {
   const queryClient = useQueryClient();
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
@@ -77,29 +72,55 @@ function ScopedScrobblesLayout({
     scrobblesQuery.error && !isUnauthorizedError(scrobblesQuery.error)
       ? getErrorMessage(scrobblesQuery.error, "Unable to load scoped scrobbles.")
       : null;
-  const errorMessage = detailMessage ?? scrobbleMessage;
 
-  if (scrobblesQuery.data) {
-    const totalPages = Math.max(1, Math.ceil(scrobblesQuery.data.total / PAGE_SIZE));
-    if (page > totalPages) {
-      return <Navigate replace to={getPageHref(totalPages)} />;
-    }
+  return {
+    account,
+    scrobblesQuery,
+    errorMessage: detailMessage ?? scrobbleMessage,
+    totalPages: scrobblesQuery.data
+      ? Math.max(1, Math.ceil(scrobblesQuery.data.total / PAGE_SIZE))
+      : null,
+  };
+}
+
+function ScopedScrobblesLayout({
+  id,
+  page,
+  title,
+  subtitle,
+  backTo,
+  backLabel,
+  emptyTitle,
+  emptyBody,
+  getPageHref,
+  scope,
+  detailPending,
+  detailError,
+  detailErrorFallback,
+}: ScopedScrobblesLayoutProps) {
+  const { account, scrobblesQuery, errorMessage, totalPages } = useScopedScrobblesPageState({
+    id,
+    page,
+    scope,
+    detailError,
+    detailErrorFallback,
+  });
+
+  if (totalPages !== null && page > totalPages) {
+    return <Navigate replace to={getPageHref(totalPages)} />;
   }
 
   return (
     <Shell title={title} subtitle={subtitle}>
-      {!account ? (
-        <EmptyState
-          title="Spotify is disconnected"
-          body="Reconnect in settings before viewing scoped scrobbles."
-        />
-      ) : !id ? (
-        <InlineNotice tone="error">The route is missing its scoped item id.</InlineNotice>
-      ) : detailPending ? (
-        <p className="py-8 text-sm text-(--text-subdued) animate-pulse">Loading scrobble context...</p>
-      ) : detailMessage ? (
-        <InlineNotice tone="error">{detailMessage}</InlineNotice>
-      ) : (
+      <DetailPageState
+        hasAccount={Boolean(account)}
+        hasRouteId={Boolean(id)}
+        disconnectedBody="Reconnect in settings before viewing scoped scrobbles."
+        missingIdMessage="The route is missing its scoped item id."
+        isPending={detailPending}
+        loadingLabel="Loading scrobble context..."
+        error={errorMessage}
+      >
         <div className="space-y-6">
           <Link
             to={backTo}
@@ -127,7 +148,7 @@ function ScopedScrobblesLayout({
             }
           />
         </div>
-      )}
+      </DetailPageState>
     </Shell>
   );
 }
