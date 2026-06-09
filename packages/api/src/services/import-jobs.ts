@@ -1,36 +1,19 @@
 import { existsSync } from "node:fs";
 
+import type {
+  SpotifyHistoryImportJobSnapshot,
+  SpotifyHistoryImportJobStatus,
+} from "../contracts/import-jobs.js";
 import type { DatabaseContext } from "../db/index.js";
 
-export type ImportJobStatus = "queued" | "running" | "completed" | "failed";
-
-export interface ImportJobSummary {
-  id: string;
-  source: string;
-  status: ImportJobStatus;
-  phase: string | null;
+export interface ImportJobSummary extends SpotifyHistoryImportJobSnapshot {
   uploadPath: string;
-  uploadedFiles: string[];
-  filesProcessed: number;
-  rowsScanned: number;
-  imported: number;
-  duplicatesSkipped: number;
-  nonMusicSkipped: number;
-  skippedTracksSkipped: number;
-  invalidRowsSkipped: number;
-  totalTrackIds: number;
-  resolvedTrackIds: number;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
 }
 
 type ImportJobRow = {
   id: number;
   source: string;
-  status: ImportJobStatus;
+  status: SpotifyHistoryImportJobStatus;
   phase: string | null;
   upload_path: string;
   uploaded_files_json: string;

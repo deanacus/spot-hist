@@ -3,6 +3,10 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@spot-hist/api-contracts/import-jobs": ["../api/src/contracts/import-jobs.ts"]
+    },
     "jsx": "react-jsx",
     "lib": [
       "DOM",
