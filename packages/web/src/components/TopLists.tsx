@@ -32,6 +32,51 @@ function ListHeader({ columns }: { columns: string[] }) {
   );
 }
 
+function TopListMetrics({ playCount, lastPlayedAt }: { playCount: number; lastPlayedAt: string | null }) {
+  return (
+    <>
+      <span className="w-28 text-right text-sm tabular-nums text-(--text-secondary)">
+        {formatPlayCount(playCount)}
+      </span>
+      <span className="w-28 text-right text-sm text-(--text-subdued)">{formatLastPlayed(lastPlayedAt)}</span>
+    </>
+  );
+}
+
+type TopListRowProps = {
+  rank: number;
+  artwork: ReactNode;
+  primary: ReactNode;
+  secondary?: ReactNode;
+  playCount: number;
+  lastPlayedAt: string | null;
+};
+
+function TopListRow({ rank, artwork, primary, secondary, playCount, lastPlayedAt }: TopListRowProps) {
+  return (
+    <div className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)">
+      <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
+        {rank}
+      </span>
+      {artwork}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-(--text-primary)">{primary}</p>
+        {secondary ? <p className="truncate text-xs text-(--text-secondary)">{secondary}</p> : null}
+      </div>
+      <TopListMetrics playCount={playCount} lastPlayedAt={lastPlayedAt} />
+    </div>
+  );
+}
+
+function ArtistLinks({ artists }: { artists: Array<{ id: string; name: string }> }) {
+  return artists.map((artist, index) => (
+    <span key={artist.id}>
+      {index > 0 ? ', ' : null}
+      <InternalDetailLink to={routes.artist(artist.id)}>{artist.name}</InternalDetailLink>
+    </span>
+  ));
+}
+
 /* ─── TopListSection ─── */
 
 type TopListSectionProps = {
@@ -86,32 +131,24 @@ export function TopArtistsList({ items, loading, error, offset = 0, footer }: To
         <div>
           <ListHeader columns={['Title', 'Scrobbles', 'Last scrobbled']} />
           {items.map((item, index) => (
-            <div
+            <TopListRow
               key={item.artist.id}
-              className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)"
-            >
-              <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
-                {offset + index + 1}
-              </span>
-              <ArtistArtwork
-                name={item.artist.name}
-                imageUrl={item.artist.imageUrl ?? null}
-                className="h-10 w-10"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-(--text-primary)">
-                  <InternalDetailLink to={routes.artist(item.artist.id)}>
-                    {item.artist.name}
-                  </InternalDetailLink>
-                </p>
-              </div>
-              <span className="w-28 text-right text-sm tabular-nums text-(--text-secondary)">
-                {formatPlayCount(item.playCount)}
-              </span>
-              <span className="w-28 text-right text-sm text-(--text-subdued)">
-                {formatLastPlayed(item.lastPlayedAt)}
-              </span>
-            </div>
+              rank={offset + index + 1}
+              artwork={
+                <ArtistArtwork
+                  name={item.artist.name}
+                  imageUrl={item.artist.imageUrl ?? null}
+                  className="h-10 w-10"
+                />
+              }
+              primary={
+                <InternalDetailLink to={routes.artist(item.artist.id)}>
+                  {item.artist.name}
+                </InternalDetailLink>
+              }
+              playCount={item.playCount}
+              lastPlayedAt={item.lastPlayedAt}
+            />
           ))}
         </div>
       ) : null}
@@ -142,42 +179,25 @@ export function TopAlbumsList({ items, loading, error, offset = 0, footer }: Top
         <div>
           <ListHeader columns={['Title', 'Scrobbles', 'Last scrobbled']} />
           {items.map((item, index) => (
-            <div
+            <TopListRow
               key={item.album.id}
-              className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)"
-            >
-              <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
-                {offset + index + 1}
-              </span>
-              <AlbumArt
-                imageUrl={item.album.imageUrl}
-                alt={`${item.album.name} album art`}
-                fallbackLabel="LP"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-(--text-primary)">
-                  <InternalDetailLink to={routes.album(item.album.id)}>
-                    {item.album.name}
-                  </InternalDetailLink>
-                </p>
-                <p className="truncate text-xs text-(--text-secondary)">
-                  {item.artists.map((artist, idx) => (
-                    <span key={artist.id}>
-                      {idx > 0 ? ', ' : null}
-                      <InternalDetailLink to={routes.artist(artist.id)}>
-                        {artist.name}
-                      </InternalDetailLink>
-                    </span>
-                  ))}
-                </p>
-              </div>
-              <span className="w-28 text-right text-sm tabular-nums text-(--text-secondary)">
-                {formatPlayCount(item.playCount)}
-              </span>
-              <span className="w-28 text-right text-sm text-(--text-subdued)">
-                {formatLastPlayed(item.lastPlayedAt)}
-              </span>
-            </div>
+              rank={offset + index + 1}
+              artwork={
+                <AlbumArt
+                  imageUrl={item.album.imageUrl}
+                  alt={`${item.album.name} album art`}
+                  fallbackLabel="LP"
+                />
+              }
+              primary={
+                <InternalDetailLink to={routes.album(item.album.id)}>
+                  {item.album.name}
+                </InternalDetailLink>
+              }
+              secondary={<ArtistLinks artists={item.artists} />}
+              playCount={item.playCount}
+              lastPlayedAt={item.lastPlayedAt}
+            />
           ))}
         </div>
       ) : null}
@@ -208,46 +228,32 @@ export function TopTracksList({ items, loading, error, offset = 0, footer }: Top
         <div>
           <ListHeader columns={['Title', 'Scrobbles', 'Last scrobbled']} />
           {items.map((item, index) => (
-            <div
+            <TopListRow
               key={item.track.id}
-              className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)"
-            >
-              <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
-                {offset + index + 1}
-              </span>
-              <AlbumArt
-                imageUrl={item.album.imageUrl}
-                alt={`${item.album.name} album art`}
-                fallbackLabel="♪"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-(--text-primary)">
-                  <InternalDetailLink to={routes.track(item.track.id)}>
-                    {item.track.name}
-                  </InternalDetailLink>
-                </p>
-                <p className="truncate text-xs text-(--text-secondary)">
-                  {item.artists.map((artist, idx) => (
-                    <span key={artist.id}>
-                      {idx > 0 ? ', ' : null}
-                      <InternalDetailLink to={routes.artist(artist.id)}>
-                        {artist.name}
-                      </InternalDetailLink>
-                    </span>
-                  ))}{' '}
-                  •{' '}
+              rank={offset + index + 1}
+              artwork={
+                <AlbumArt
+                  imageUrl={item.album.imageUrl}
+                  alt={`${item.album.name} album art`}
+                  fallbackLabel="♪"
+                />
+              }
+              primary={
+                <InternalDetailLink to={routes.track(item.track.id)}>
+                  {item.track.name}
+                </InternalDetailLink>
+              }
+              secondary={
+                <>
+                  <ArtistLinks artists={item.artists} /> •{' '}
                   <InternalDetailLink to={routes.album(item.album.id)}>
                     {item.album.name}
                   </InternalDetailLink>
-                </p>
-              </div>
-              <span className="w-28 text-right text-sm tabular-nums text-(--text-secondary)">
-                {formatPlayCount(item.playCount)}
-              </span>
-              <span className="w-28 text-right text-sm text-(--text-subdued)">
-                {formatLastPlayed(item.lastPlayedAt)}
-              </span>
-            </div>
+                </>
+              }
+              playCount={item.playCount}
+              lastPlayedAt={item.lastPlayedAt}
+            />
           ))}
         </div>
       ) : null}
