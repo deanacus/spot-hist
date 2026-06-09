@@ -466,14 +466,18 @@ function isConservativeLocalOwnTopAlbum(
   );
 }
 
-async function getAlbumIdSet(database: DatabaseContext, spotifyIds: string[]) {
+async function getLocalSpotifyIdSet(
+  database: DatabaseContext,
+  tableName: "albums" | "tracks",
+  spotifyIds: string[],
+) {
   if (spotifyIds.length === 0) {
     return new Set<string>();
   }
 
   const placeholders = spotifyIds.map(() => "?").join(", ");
   const rows = database.client
-    .prepare(`SELECT spotify_id FROM albums WHERE spotify_id IN (${placeholders})`)
+    .prepare(`SELECT spotify_id FROM ${tableName} WHERE spotify_id IN (${placeholders})`)
     .all(...spotifyIds) as Array<{ spotify_id: string }>;
 
   return new Set(rows.map((row) => row.spotify_id));
@@ -488,8 +492,9 @@ async function refreshArtistCache(database: DatabaseContext, spotify: SpotifyCli
     }),
   ]);
   const ownArtistAlbums = artistAlbums.items.filter((album) => isOwnCatalogAlbum(artist.spotifyId, album));
-  const localAlbumIds = await getAlbumIdSet(
+  const localAlbumIds = await getLocalSpotifyIdSet(
     database,
+    "albums",
     ownArtistAlbums.map((item) => item.id),
   );
   const fetchedAt = isoNow();
@@ -515,8 +520,9 @@ async function refreshAlbumCacheByRow(
 ) {
   const accessToken = await requireSpotifyAccessToken(database, spotify);
   const albumDetail = await spotify.fetchAlbum(accessToken, album.spotifyId);
-  const trackIds = await getLocalTrackIdSet(
+  const trackIds = await getLocalSpotifyIdSet(
     database,
+    "tracks",
     albumDetail.tracks.items.map((item) => item.id),
   );
   const fetchedAt = isoNow();
@@ -1042,19 +1048,6 @@ async function getRecentPlaysPage(
     offset,
     limit,
   };
-}
-
-async function getLocalTrackIdSet(database: DatabaseContext, spotifyIds: string[]) {
-  if (spotifyIds.length === 0) {
-    return new Set<string>();
-  }
-
-  const placeholders = spotifyIds.map(() => "?").join(", ");
-  const rows = database.client
-    .prepare(`SELECT spotify_id FROM tracks WHERE spotify_id IN (${placeholders})`)
-    .all(...spotifyIds) as Array<{ spotify_id: string }>;
-
-  return new Set(rows.map((row) => row.spotify_id));
 }
 
 async function getAlbumPlayCountMap(database: DatabaseContext, albumId: number) {
