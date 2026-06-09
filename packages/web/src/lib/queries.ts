@@ -66,7 +66,7 @@ export function isUnauthorizedError(error: unknown) {
   return error instanceof ApiError && error.status === 401;
 }
 
-export async function fetchBootstrap(): Promise<BootstrapData> {
+async function fetchBootstrap(): Promise<BootstrapData> {
   const setupStatus = await api.getSetupStatus();
 
   if (!setupStatus.setupComplete || !setupStatus.spotifyConnected || !setupStatus.passwordSet) {
@@ -349,7 +349,7 @@ export function useDeleteHistoryItemMutation() {
   });
 }
 
-export function useLatestSpotifyHistoryImportJobQuery(enabled: boolean) {
+function useLatestSpotifyHistoryImportJobQuery(enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.spotifyHistoryImportLatest,
     queryFn: () => api.getLatestSpotifyHistoryImportJob(),
@@ -358,7 +358,7 @@ export function useLatestSpotifyHistoryImportJobQuery(enabled: boolean) {
   });
 }
 
-export function useSpotifyHistoryImportJobQuery(id: string | null | undefined, enabled: boolean) {
+function useSpotifyHistoryImportJobQuery(id: string | null | undefined, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.spotifyHistoryImportJob(id ?? ""),
     queryFn: () => api.getSpotifyHistoryImportJob(id ?? ""),

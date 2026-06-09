@@ -19,7 +19,7 @@ export type AppStatus = {
   account: AccountSummary | null;
 };
 
-export type StatsSummary = {
+type StatsSummary = {
   totalPlays: number;
   uniqueTracks: number;
   uniqueArtists: number;
@@ -85,11 +85,11 @@ export type TopTrack = RankedEntity & {
   artists: ArtistSummary[];
 };
 
-export type TopArtistsResponse = PaginatedResponse<TopArtist>;
+type TopArtistsResponse = PaginatedResponse<TopArtist>;
 
-export type TopAlbumsResponse = PaginatedResponse<TopAlbum>;
+type TopAlbumsResponse = PaginatedResponse<TopAlbum>;
 
-export type TopTracksResponse = PaginatedResponse<TopTrack>;
+type TopTracksResponse = PaginatedResponse<TopTrack>;
 
 export type DetailStatus = "fresh" | "stale" | "missing";
 
@@ -268,7 +268,7 @@ export type TrackDetailPage = DetailPageEnvelope & {
 
 // Detail refresh failures are assumed to follow the existing `{ message }` error contract.
 // Nullable detail fields keep frontend assumptions localized while backend work lands.
-export type DetailRefreshError = {
+type DetailRefreshError = {
   message: string;
 };
 

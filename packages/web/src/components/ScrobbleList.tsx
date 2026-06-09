@@ -22,7 +22,7 @@ function ScrobbleArtists({ artists }: { artists: HistoryItem["artists"] }) {
   );
 }
 
-export function formatScrobbledAt(value: string) {
+function formatScrobbledAt(value: string) {
   return new Date(value).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -32,7 +32,7 @@ export function formatScrobbledAt(value: string) {
   });
 }
 
-export function ScrobbleRow({ item }: { item: HistoryItem }) {
+function ScrobbleRow({ item }: { item: HistoryItem }) {
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);

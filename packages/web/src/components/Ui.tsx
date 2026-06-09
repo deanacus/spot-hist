@@ -93,7 +93,7 @@ function Sidebar() {
 
 /* ─── Mobile Nav ─── Bottom bar for small screens ─── */
 
-export function MobileNav() {
+function MobileNav() {
   const location = useLocation();
 
   return (
@@ -255,11 +255,10 @@ export function LoadingView({ label }: { label: string }) {
 
 /* ─── Legacy exports for compatibility ─── */
 
-export { Shell as AppFrame };
-export function ShellNav() {
+function ShellNav() {
   return null;
 }
-export function Panel({ children, className = '' }: PropsWithChildren<{ className?: string }>) {
+function Panel({ children, className = '' }: PropsWithChildren<{ className?: string }>) {
   return <div className={`rounded bg-(--bg-elevated) p-5 ${className}`}>{children}</div>;
 }
 
@@ -281,7 +280,7 @@ export function MetricCard({ label, value, hint, to }: { label: string; value: s
   );
 }
 
-export function BrandLink() {
+function BrandLink() {
   return (
     <Link to={routes.root} className="text-sm font-bold text-(--text-primary)">
       Spot Hist

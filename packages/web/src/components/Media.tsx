@@ -91,7 +91,7 @@ export function SpotifyLink({
 }
 
 /** @deprecated Use SpotifyLink instead */
-export function SpotifyAttribution({
+function SpotifyAttribution({
   url,
   className = "",
 }: {

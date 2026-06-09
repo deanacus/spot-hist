@@ -163,7 +163,7 @@ export function createSpotifyMock(overrides: Partial<TestSpotifyClient> = {}): T
   };
 }
 
-export async function seedRecentlyPlayed(database: DatabaseContext, items: SpotifyRecentlyPlayedItem[]) {
+async function seedRecentlyPlayed(database: DatabaseContext, items: SpotifyRecentlyPlayedItem[]) {
   await persistRecentlyPlayedItems(database, items);
 }
 

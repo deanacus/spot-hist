@@ -109,7 +109,7 @@ export function getLatestImportJob(database: DatabaseContext, source = "spotify_
   return mapImportJobRow(row);
 }
 
-export function getActiveImportJob(database: DatabaseContext, source = "spotify_history") {
+function getActiveImportJob(database: DatabaseContext, source = "spotify_history") {
   const row = database.client
     .prepare(
       "SELECT * FROM import_jobs WHERE source = ? AND status IN ('queued', 'running') ORDER BY id ASC LIMIT 1",

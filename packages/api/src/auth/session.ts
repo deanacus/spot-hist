@@ -8,7 +8,7 @@ import { sessions } from "../db/schema.js";
 
 const SESSION_COOKIE = "spot_hist_session";
 
-export interface AuthenticatedSession {
+interface AuthenticatedSession {
   id: number;
   token: string;
 }
@@ -47,11 +47,11 @@ export async function destroySession(database: DatabaseContext, token: string) {
   await database.db.delete(sessions).where(eq(sessions.sessionTokenHash, hashToken(token)));
 }
 
-export async function destroyExpiredSessions(database: DatabaseContext) {
+async function destroyExpiredSessions(database: DatabaseContext) {
   await database.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));
 }
 
-export async function validateSession(
+async function validateSession(
   database: DatabaseContext,
   config: AppConfig,
   token: string | undefined,

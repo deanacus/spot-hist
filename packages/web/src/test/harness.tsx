@@ -19,7 +19,7 @@ type QueryClientInstance = {
   clear?: () => void;
 };
 
-export type MockRequest = {
+type MockRequest = {
   method: string;
   url: string;
   key: string;

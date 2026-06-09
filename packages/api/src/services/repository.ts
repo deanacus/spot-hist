@@ -18,13 +18,13 @@ function isoNow() {
   return new Date().toISOString();
 }
 
-export async function getAppConfig(database: DatabaseContext) {
+async function getAppConfig(database: DatabaseContext) {
   return database.db.query.appConfig.findFirst({
     where: eq(appConfig.id, 1),
   });
 }
 
-export async function getAccount(database: DatabaseContext) {
+async function getAccount(database: DatabaseContext) {
   return database.db.query.account.findFirst({
     where: eq(account.id, 1),
   });
@@ -59,7 +59,7 @@ export async function ensurePassword(database: DatabaseContext, passwordHash: st
   });
 }
 
-export async function updateSetupComplete(database: DatabaseContext, setupComplete: boolean) {
+async function updateSetupComplete(database: DatabaseContext, setupComplete: boolean) {
   const current = await getAppConfig(database);
 
   if (!current) {
@@ -124,7 +124,7 @@ export async function clearConnectedAccount(database: DatabaseContext) {
   await updateSetupComplete(database, false);
 }
 
-export async function refreshAccountTokens(
+async function refreshAccountTokens(
   database: DatabaseContext,
   spotify: SpotifyClient,
   newTokens: { accessToken: string; refreshToken?: string; expiresAt: string },

@@ -8,7 +8,7 @@ import {
 } from "../services/import-jobs.js";
 import { processSpotifyHistoryImport } from "../services/import.js";
 
-export interface ImportRunnerState {
+interface ImportRunnerState {
   running: boolean;
   currentJobId: string | null;
   lastRunAt: string | null;

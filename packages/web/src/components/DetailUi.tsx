@@ -8,7 +8,7 @@ import { routes } from "../lib/routes";
 import { ScrobbleRows } from "./ScrobbleList";
 import { Button, InlineNotice } from "./Ui";
 
-export function formatCount(value: number | null | undefined) {
+function formatCount(value: number | null | undefined) {
   if (value == null) {
     return "—";
   }
@@ -118,7 +118,7 @@ export function StatRow({
 
 /* ─── StatGrid (legacy compat) ─── */
 
-export function StatGrid({
+function StatGrid({
   items,
 }: {
   items: Array<{ label: string; value: string; hint: string }>;
@@ -161,7 +161,7 @@ export function DismissibleWarning({
 
 /* ─── MetadataList ─── Key/value pairs ─── */
 
-export function MetadataList({
+function MetadataList({
   items,
 }: {
   items: Array<{ label: string; value: ReactNode }>;

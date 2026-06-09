@@ -83,7 +83,7 @@ function LoginRoute({
   return <>{children}</>;
 }
 
-export function AppRoutes() {
+function AppRoutes() {
   const bootstrapQuery = useBootstrapQuery();
   const bootstrap = bootstrapQuery.data;
   const home = useMemo(() => (bootstrap ? getHomeRoute(bootstrap) : routes.setup), [bootstrap]);

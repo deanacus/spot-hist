@@ -3,7 +3,7 @@ import type { DatabaseContext } from "../db/index.js";
 import type { SpotifyClient } from "../auth/spotify.js";
 import { getAccessToken, persistRecentlyPlayedItems } from "../services/repository.js";
 
-export interface PollerState {
+interface PollerState {
   running: boolean;
   lastRunAt: string | null;
   lastSuccessAt: string | null;
