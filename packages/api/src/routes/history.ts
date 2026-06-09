@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { getHistoryPage } from "../services/repository.js";
+import { deleteHistoryItem, getHistoryPage } from "../services/repository.js";
 
 function parsePaginationQuery(
   query: { limit?: string; offset?: string } | undefined,
@@ -34,6 +34,30 @@ export async function registerHistoryRoutes(app: FastifyInstance) {
       }
 
       return getHistoryPage(app.locals.database, pagination.limit, pagination.offset);
+    },
+  );
+
+  app.delete(
+    "/api/history/:id",
+    {
+      preHandler: app.locals.requireSession,
+    },
+    async (request, reply) => {
+      const params = request.params as { id?: string } | undefined;
+      const id = Number(params?.id);
+
+      if (!Number.isInteger(id) || id < 1) {
+        reply.code(400).send({ error: "Invalid id" });
+        return;
+      }
+
+      const deleted = await deleteHistoryItem(app.locals.database, id);
+      if (!deleted) {
+        reply.code(404).send({ error: "History item not found" });
+        return;
+      }
+
+      reply.code(204).send();
     },
   );
 }

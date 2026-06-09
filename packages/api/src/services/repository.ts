@@ -555,6 +555,19 @@ export async function getHistoryPage(
   };
 }
 
+export async function deleteHistoryItem(database: DatabaseContext, playId: number) {
+  const result = database.client
+    .prepare(
+      `
+      DELETE FROM plays
+      WHERE id = ?
+      `,
+    )
+    .run(playId);
+
+  return Number(result.changes ?? 0) > 0;
+}
+
 interface TopArtistListItem {
   artist: {
     id: string;

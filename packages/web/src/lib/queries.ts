@@ -108,6 +108,13 @@ export function getHomeRoute(data: BootstrapData) {
 async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap }),
+    invalidatePlayDerivedQueries(queryClient),
+    queryClient.invalidateQueries({ queryKey: queryKeys.spotifyHistoryImportLatest }),
+  ]);
+}
+
+async function invalidatePlayDerivedQueries(queryClient: QueryClient) {
+  await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
     queryClient.invalidateQueries({ queryKey: queryKeys.history }),
     queryClient.invalidateQueries({ queryKey: ["top-artists"] }),
@@ -119,7 +126,6 @@ async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ["artist-recent-plays"] }),
     queryClient.invalidateQueries({ queryKey: ["album-recent-plays"] }),
     queryClient.invalidateQueries({ queryKey: ["track-recent-plays"] }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.spotifyHistoryImportLatest }),
   ]);
 }
 
@@ -327,6 +333,18 @@ export function useDisconnectAccountMutation() {
     mutationFn: () => api.disconnectAccount(),
     onSuccess: async () => {
       await invalidateAuthenticatedQueries(queryClient);
+    },
+  });
+}
+
+export function useDeleteHistoryItemMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string | number) => api.deleteHistoryItem(id),
+    retry: false,
+    onSuccess: async () => {
+      await invalidatePlayDerivedQueries(queryClient);
     },
   });
 }

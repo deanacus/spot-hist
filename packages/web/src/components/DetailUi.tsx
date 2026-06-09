@@ -5,7 +5,7 @@ import type {
   HistoryItem,
 } from "../lib/api";
 import { routes } from "../lib/routes";
-import { AlbumArt } from "./Media";
+import { ScrobbleRows } from "./ScrobbleList";
 import { Button, InlineNotice } from "./Ui";
 
 export function formatCount(value: number | null | undefined) {
@@ -234,47 +234,7 @@ export function RecentPlaysSection({
         </p>
       ) : (
         <>
-          <div>
-            {items.map((item) => (
-              <article
-                key={item.id}
-                className="group flex items-center gap-3 rounded px-3 py-2 transition-colors hover:bg-(--bg-hover)"
-              >
-                <AlbumArt
-                  imageUrl={item.album.imageUrl}
-                  alt={`${item.album.name} album art`}
-                  fallbackLabel="♪"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-(--text-primary)">
-                    <Link
-                      to={routes.track(item.track.id)}
-                      className="hover:underline"
-                    >
-                      {item.track.name}
-                    </Link>
-                  </p>
-                  <p className="truncate text-xs text-(--text-secondary)">
-                    <ArtistsInline artists={item.artists} /> •{" "}
-                    <Link
-                      to={routes.album(item.album.id)}
-                      className="hover:underline"
-                    >
-                      {item.album.name}
-                    </Link>
-                  </p>
-                </div>
-                <span className="shrink-0 text-xs text-(--text-subdued) tabular-nums">
-                  {new Date(item.playedAt).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </article>
-            ))}
-          </div>
+          <ScrobbleRows items={items} />
           {hasMore && onLoadMore && (
             <div className="mt-4">
               <button

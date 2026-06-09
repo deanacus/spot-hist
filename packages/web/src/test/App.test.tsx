@@ -369,6 +369,7 @@ describe("home page", () => {
 
     expect(await screen.findByText("Track 1")).toBeInTheDocument();
     expect(screen.getByText("Track 10")).toBeInTheDocument();
+    expect(screen.getAllByText(/2026/).length).toBeGreaterThan(0);
     expect(screen.queryByText("Track 11")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more scrobbles" })).not.toBeInTheDocument();
@@ -522,6 +523,115 @@ describe("scrobbles page", () => {
 
     expect(await screen.findByText("Last Valid Page")).toBeInTheDocument();
     await waitForPathname(routes.scrobblesPage(3));
+  });
+
+  it("deletes an individual scrobble from the full scrobbles list", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/history?offset=0&limit=50": [
+        {
+          body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 1, limit: 50 }),
+        },
+        {
+          body: makePage([], { total: 0, limit: 50 }),
+        },
+      ],
+      "DELETE /api/history/play_1": {
+        status: 204,
+      },
+    });
+
+    await renderApp(routes.scrobbles);
+
+    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Scrobble actions" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(screen.getByText("Delete this scrobble? This can’t be undone.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Midnight Run")).not.toBeInTheDocument();
+    });
+
+    expect(await screen.findByText("No scrobbles yet")).toBeInTheDocument();
+    expect(fetchMock.count("DELETE /api/history/play_1")).toBe(1);
+    expect(fetchMock.count("GET /api/history?offset=0&limit=50")).toBe(2);
+  });
+
+  it("cancels scrobble deletion without sending a delete request", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/history?offset=0&limit=50": {
+        body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 1, limit: 50 }),
+      },
+    });
+
+    await renderApp(routes.scrobbles);
+
+    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Scrobble actions" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByText("Midnight Run")).toBeInTheDocument();
+    expect(fetchMock.count("DELETE /api/history/play_1")).toBe(0);
+  });
+
+  it("shows an inline error when scrobble deletion fails", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/history?offset=0&limit=50": {
+        body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 1, limit: 50 }),
+      },
+      "DELETE /api/history/play_1": {
+        status: 500,
+        body: { message: "Delete failed" },
+      },
+    });
+
+    await renderApp(routes.scrobbles);
+
+    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Scrobble actions" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Delete failed")).toBeInTheDocument();
+    expect(screen.getByText("Midnight Run")).toBeInTheDocument();
+    expect(fetchMock.count("DELETE /api/history/play_1")).toBe(1);
+    expect(fetchMock.count("GET /api/history?offset=0&limit=50")).toBe(1);
   });
 });
 

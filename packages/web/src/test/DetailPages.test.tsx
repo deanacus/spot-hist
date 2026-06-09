@@ -413,6 +413,50 @@ describe("detail page navigation", () => {
     },
   );
 
+  it("deletes a recent scrobble from the shared detail-page scrobble rows", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": { body: makeSetupStatus() },
+      "GET /api/status": { body: makeAppStatus() },
+      "GET /api/albums/album_1": { body: makeAlbumDetail("fresh") },
+      "GET /api/albums/album_1/recent-plays?offset=0&limit=5": [
+        {
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], {
+            total: 1,
+            limit: 5,
+          }),
+        },
+        {
+          body: makeRecentPlaysPageSlice([], { total: 0, limit: 5 }),
+        },
+      ],
+      "DELETE /api/history/play_1": {
+        status: 204,
+      },
+    });
+
+    await renderApp(routes.album("album_1"));
+
+    const recentScrobblesSection = (await screen.findByRole("heading", { name: "Recent scrobbles" }))
+      .closest("section");
+
+    expect(recentScrobblesSection).not.toBeNull();
+
+    const section = recentScrobblesSection as HTMLElement;
+    const user = userEvent.setup();
+
+    await user.click(within(section).getByRole("button", { name: "Scrobble actions" }));
+    await user.click(within(section).getByRole("button", { name: "Delete" }));
+    await user.click(within(section).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(within(section).queryByRole("button", { name: "Scrobble actions" })).not.toBeInTheDocument();
+    });
+
+    expect(within(section).getByText("No scrobbles have been collected for this view yet.")).toBeInTheDocument();
+    expect(fetchMock.count("DELETE /api/history/play_1")).toBe(1);
+    expect(fetchMock.count("GET /api/albums/album_1/recent-plays?offset=0&limit=5")).toBe(2);
+  });
+
   it("navigates from the top artist list into the artist detail route", async () => {
     const topAlbums = [
       {

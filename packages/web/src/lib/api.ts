@@ -380,6 +380,11 @@ export const api = {
 
     return request<HistoryPage>(`/api/history?${search.toString()}`);
   },
+  deleteHistoryItem(id: string | number) {
+    return request<void>(`/api/history/${id}`, {
+      method: "DELETE",
+    });
+  },
   getTopArtists(limit = 50, offset = 0) {
     const search = new URLSearchParams();
     search.set("offset", String(offset));
