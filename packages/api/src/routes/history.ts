@@ -1,23 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { deleteHistoryItem, getHistoryPage } from "../services/repository.js";
-
-function parsePaginationQuery(
-  query: { limit?: string; offset?: string } | undefined,
-  defaultLimit: number,
-) {
-  const limit = query?.limit === undefined ? defaultLimit : Number(query.limit);
-  if (!Number.isInteger(limit) || limit < 1) {
-    return { error: "Invalid limit" } as const;
-  }
-
-  const offset = query?.offset === undefined ? 0 : Number(query.offset);
-  if (!Number.isInteger(offset) || offset < 0) {
-    return { error: "Invalid offset" } as const;
-  }
-
-  return { limit, offset } as const;
-}
+import { parsePaginationQuery, parsePositiveId } from "./shared.js";
 
 export async function registerHistoryRoutes(app: FastifyInstance) {
   app.get(
@@ -44,9 +28,9 @@ export async function registerHistoryRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const params = request.params as { id?: string } | undefined;
-      const id = Number(params?.id);
+      const id = parsePositiveId(params?.id);
 
-      if (!Number.isInteger(id) || id < 1) {
+      if (id === null) {
         reply.code(400).send({ error: "Invalid id" });
         return;
       }

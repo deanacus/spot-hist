@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 import {
   getAlbumDetailPage,
@@ -11,236 +11,82 @@ import {
   getAlbumRecentPlaysPage,
   getTrackRecentPlaysPage,
 } from "../services/details.js";
-
-function notFound(reply: FastifyReply, entity: string) {
-  reply.code(404).send({ message: `${entity} not found` });
-}
-
-function parsePaginationQuery(
-  query: { limit?: string; offset?: string } | undefined,
-  defaultLimit: number,
-) {
-  const limit = query?.limit === undefined ? defaultLimit : Number(query.limit);
-  if (!Number.isInteger(limit) || limit < 1) {
-    return { error: "Invalid limit" } as const;
-  }
-
-  const offset = query?.offset === undefined ? 0 : Number(query.offset);
-  if (!Number.isInteger(offset) || offset < 0) {
-    return { error: "Invalid offset" } as const;
-  }
-
-  return { limit, offset } as const;
-}
+import {
+  registerEntityPageRoute,
+  registerEntityRecentPlaysRoute,
+  registerEntityRefreshRoute,
+} from "./shared.js";
 
 export async function registerDetailRoutes(app: FastifyInstance) {
-  app.get(
+  registerEntityPageRoute(
+    app,
     "/api/artists/:id",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const page = await getArtistDetailPage(app.locals.database, id);
-      if (!page) {
-        notFound(reply, "Artist");
-        return;
-      }
-
-      return page;
-    },
+    "Artist",
+    (id) => getArtistDetailPage(app.locals.database, id),
   );
 
-  app.post(
+  registerEntityRefreshRoute(
+    app,
     "/api/artists/:id/refresh",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-
-      try {
-        const page = await refreshArtistDetailPage(app.locals.database, app.locals.spotify, id);
-        if (!page) {
-          notFound(reply, "Artist");
-          return;
-        }
-
-        return page;
-      } catch (error) {
-        app.log.warn({ err: error, entity: "artist", id }, "Artist detail refresh failed");
-        reply.code(502).send({ message: "Unable to refresh artist details." });
-      }
-    },
+    "Artist",
+    "artist",
+    "Unable to refresh artist details.",
+    (id) => refreshArtistDetailPage(app.locals.database, app.locals.spotify, id),
   );
 
-  app.get(
+  registerEntityPageRoute(
+    app,
     "/api/albums/:id",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const page = await getAlbumDetailPage(app.locals.database, id);
-      if (!page) {
-        notFound(reply, "Album");
-        return;
-      }
-
-      return page;
-    },
+    "Album",
+    (id) => getAlbumDetailPage(app.locals.database, id),
   );
 
-  app.post(
+  registerEntityRefreshRoute(
+    app,
     "/api/albums/:id/refresh",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-
-      try {
-        const page = await refreshAlbumDetailPage(app.locals.database, app.locals.spotify, id);
-        if (!page) {
-          notFound(reply, "Album");
-          return;
-        }
-
-        return page;
-      } catch (error) {
-        app.log.warn({ err: error, entity: "album", id }, "Album detail refresh failed");
-        reply.code(502).send({ message: "Unable to refresh album details." });
-      }
-    },
+    "Album",
+    "album",
+    "Unable to refresh album details.",
+    (id) => refreshAlbumDetailPage(app.locals.database, app.locals.spotify, id),
   );
 
-  app.get(
+  registerEntityPageRoute(
+    app,
     "/api/tracks/:id",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const page = await getTrackDetailPage(app.locals.database, id);
-      if (!page) {
-        notFound(reply, "Track");
-        return;
-      }
-
-      return page;
-    },
+    "Track",
+    (id) => getTrackDetailPage(app.locals.database, id),
   );
 
-  app.post(
+  registerEntityRefreshRoute(
+    app,
     "/api/tracks/:id/refresh",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-
-      try {
-        const page = await refreshTrackDetailPage(app.locals.database, app.locals.spotify, id);
-        if (!page) {
-          notFound(reply, "Track");
-          return;
-        }
-
-        return page;
-      } catch (error) {
-        app.log.warn({ err: error, entity: "track", id }, "Track detail refresh failed");
-        reply.code(502).send({ message: "Unable to refresh track details." });
-      }
-    },
+    "Track",
+    "track",
+    "Unable to refresh track details.",
+    (id) => refreshTrackDetailPage(app.locals.database, app.locals.spotify, id),
   );
 
-  app.get(
+  registerEntityRecentPlaysRoute(
+    app,
     "/api/artists/:id/recent-plays",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const query = request.query as { limit?: string; offset?: string } | undefined;
-      const pagination = parsePaginationQuery(query, 20);
-
-      if ("error" in pagination) {
-        reply.code(400).send({ error: pagination.error });
-        return;
-      }
-
-      const page = await getArtistRecentPlaysPage(
-        app.locals.database,
-        id,
-        pagination.limit,
-        pagination.offset,
-      );
-      if (!page) {
-        notFound(reply, "Artist");
-        return;
-      }
-
-      return page;
-    },
+    "Artist",
+    20,
+    (id, limit, offset) => getArtistRecentPlaysPage(app.locals.database, id, limit, offset),
   );
 
-  app.get(
+  registerEntityRecentPlaysRoute(
+    app,
     "/api/albums/:id/recent-plays",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const query = request.query as { limit?: string; offset?: string } | undefined;
-      const pagination = parsePaginationQuery(query, 20);
-
-      if ("error" in pagination) {
-        reply.code(400).send({ error: pagination.error });
-        return;
-      }
-
-      const page = await getAlbumRecentPlaysPage(
-        app.locals.database,
-        id,
-        pagination.limit,
-        pagination.offset,
-      );
-      if (!page) {
-        notFound(reply, "Album");
-        return;
-      }
-
-      return page;
-    },
+    "Album",
+    20,
+    (id, limit, offset) => getAlbumRecentPlaysPage(app.locals.database, id, limit, offset),
   );
 
-  app.get(
+  registerEntityRecentPlaysRoute(
+    app,
     "/api/tracks/:id/recent-plays",
-    {
-      preHandler: app.locals.requireSession,
-    },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const query = request.query as { limit?: string; offset?: string } | undefined;
-      const pagination = parsePaginationQuery(query, 20);
-
-      if ("error" in pagination) {
-        reply.code(400).send({ error: pagination.error });
-        return;
-      }
-
-      const page = await getTrackRecentPlaysPage(
-        app.locals.database,
-        id,
-        pagination.limit,
-        pagination.offset,
-      );
-      if (!page) {
-        notFound(reply, "Track");
-        return;
-      }
-
-      return page;
-    },
+    "Track",
+    20,
+    (id, limit, offset) => getTrackRecentPlaysPage(app.locals.database, id, limit, offset),
   );
 }
