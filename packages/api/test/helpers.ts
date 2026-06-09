@@ -113,6 +113,7 @@ export type TestSpotifyClient = SpotifyClient & {
   fetchArtistAlbums?: (...args: any[]) => Promise<any>;
   fetchAlbum?: (...args: any[]) => Promise<any>;
   fetchTrack?: (...args: any[]) => Promise<any>;
+  fetchTracks?: (...args: any[]) => Promise<any>;
 };
 
 export function createSpotifyMock(overrides: Partial<TestSpotifyClient> = {}): TestSpotifyClient {
@@ -152,6 +153,9 @@ export function createSpotifyMock(overrides: Partial<TestSpotifyClient> = {}): T
     },
     async fetchTrack() {
       throw new Error("fetchTrack mock not configured");
+    },
+    async fetchTracks() {
+      throw new Error("fetchTracks mock not configured");
     },
     encrypt: (value) => value,
     decrypt: (value) => value,

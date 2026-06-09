@@ -296,9 +296,10 @@ function upsertTrack(database: { db: any }, item: SpotifyRecentlyPlayedItem, alb
   return row;
 }
 
-export async function persistRecentlyPlayedItems(
+function persistSpotifyPlayedItems(
   database: DatabaseContext,
   items: SpotifyRecentlyPlayedItem[],
+  options: { updatePollCursor: boolean },
 ) {
   const ordered = [...items].sort(
     (left, right) => Date.parse(left.played_at) - Date.parse(right.played_at),
@@ -379,7 +380,9 @@ export async function persistRecentlyPlayedItems(
   );
 
   const transaction = database.client.transaction((batch: SpotifyRecentlyPlayedItem[]) => {
-    for (const item of ordered) {
+    let insertedPlayCount = 0;
+
+    for (const item of batch) {
       const timestamp = isoNow();
       const album = item.track.album;
       upsertAlbumStmt.run({
@@ -440,21 +443,42 @@ export async function persistRecentlyPlayedItems(
         insertTrackArtistStmt.run(trackRow.id, artistRow.id);
       }
 
-      insertPlayStmt.run(
+      const insertPlayResult = insertPlayStmt.run(
         trackRow.id,
         item.played_at,
         item.context?.type ?? null,
         item.context?.uri ?? null,
         timestamp,
       );
+
+      insertedPlayCount += Number(insertPlayResult.changes ?? 0);
     }
+    return insertedPlayCount;
   });
-  transaction(ordered);
+  const insertedPlayCount = transaction(ordered) as number;
 
   const newest = ordered.at(-1);
-  if (newest) {
+  if (options.updatePollCursor && newest) {
     updateCursorStmt.run(Date.parse(newest.played_at), isoNow());
   }
+
+  return {
+    insertedPlayCount,
+  };
+}
+
+export async function persistRecentlyPlayedItems(
+  database: DatabaseContext,
+  items: SpotifyRecentlyPlayedItem[],
+) {
+  return persistSpotifyPlayedItems(database, items, { updatePollCursor: true });
+}
+
+export async function persistImportedPlayedItems(
+  database: DatabaseContext,
+  items: SpotifyRecentlyPlayedItem[],
+) {
+  return persistSpotifyPlayedItems(database, items, { updatePollCursor: false });
 }
 
 export async function getHistoryPage(

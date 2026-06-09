@@ -274,6 +274,30 @@ export type DetailRefreshError = {
   message: string;
 };
 
+export type SpotifyHistoryImportJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type SpotifyHistoryImportJob = {
+  id: string;
+  source: string;
+  status: SpotifyHistoryImportJobStatus;
+  phase: string | null;
+  uploadedFiles: string[];
+  filesProcessed: number;
+  rowsScanned: number;
+  imported: number;
+  duplicatesSkipped: number;
+  nonMusicSkipped: number;
+  skippedTracksSkipped: number;
+  invalidRowsSkipped: number;
+  totalTrackIds: number;
+  resolvedTrackIds: number;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
 export class ApiError<T = unknown> extends Error {
   status: number;
   data: T | null;
@@ -446,6 +470,23 @@ export const api = {
     return request<void>("/api/auth/account", {
       method: "DELETE",
     });
+  },
+  startSpotifyHistoryImport(files: File[]) {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("file", file);
+    }
+
+    return request<SpotifyHistoryImportJob>("/api/imports/spotify-history", {
+      method: "POST",
+      body: formData,
+    });
+  },
+  getLatestSpotifyHistoryImportJob() {
+    return request<SpotifyHistoryImportJob | null>("/api/imports/spotify-history/latest");
+  },
+  getSpotifyHistoryImportJob(id: string) {
+    return request<SpotifyHistoryImportJob>(`/api/imports/spotify-history/${id}`);
   },
   startSpotifyLogin() {
     window.location.assign("/api/auth/login");

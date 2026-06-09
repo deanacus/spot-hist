@@ -217,6 +217,36 @@ export const trackDetails = sqliteTable(
   }),
 );
 
+export const importJobs = sqliteTable(
+  "import_jobs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    source: text("source").notNull(),
+    status: text("status").notNull(),
+    phase: text("phase"),
+    uploadPath: text("upload_path").notNull(),
+    uploadedFilesJson: text("uploaded_files_json").notNull(),
+    filesProcessed: integer("files_processed").notNull().default(0),
+    rowsScanned: integer("rows_scanned").notNull().default(0),
+    imported: integer("imported").notNull().default(0),
+    duplicatesSkipped: integer("duplicates_skipped").notNull().default(0),
+    nonMusicSkipped: integer("non_music_skipped").notNull().default(0),
+    skippedTracksSkipped: integer("skipped_tracks_skipped").notNull().default(0),
+    invalidRowsSkipped: integer("invalid_rows_skipped").notNull().default(0),
+    totalTrackIds: integer("total_track_ids").notNull().default(0),
+    resolvedTrackIds: integer("resolved_track_ids").notNull().default(0),
+    errorMessage: text("error_message"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+  },
+  (table) => ({
+    statusIdx: index("import_jobs_status_idx").on(table.status),
+    createdAtIdx: index("import_jobs_created_at_idx").on(table.createdAt),
+  }),
+);
+
 export const schema = {
   account,
   albumDetails,
@@ -225,6 +255,7 @@ export const schema = {
   appConfig,
   artistDetails,
   artists,
+  importJobs,
   plays,
   sessions,
   trackDetails,

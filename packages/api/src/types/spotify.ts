@@ -134,3 +134,7 @@ export interface SpotifyTrackDetail extends SpotifyTrack {
     upc?: string;
   };
 }
+
+export interface SpotifyTracksResponse {
+  tracks: Array<SpotifyTrackDetail | null>;
+}

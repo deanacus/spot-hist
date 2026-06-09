@@ -7,6 +7,7 @@ import type {
   SpotifyArtistAlbumsResponse,
   SpotifyArtistDetail,
   SpotifyRecentlyPlayedResponse,
+  SpotifyTracksResponse,
   SpotifyTrackDetail,
   SpotifyTokenResponse,
   SpotifyUserProfile,
@@ -26,6 +27,7 @@ export interface SpotifyClient {
   ): Promise<SpotifyArtistAlbumsResponse>;
   fetchAlbum(accessToken: string, albumId: string): Promise<SpotifyAlbumDetail>;
   fetchTrack(accessToken: string, trackId: string): Promise<SpotifyTrackDetail>;
+  fetchTracks(accessToken: string, trackIds: string[]): Promise<SpotifyTrackDetail[]>;
   encrypt(value: string): string;
   decrypt(value: string): string;
 }
@@ -187,6 +189,30 @@ export function createSpotifyClient(config: AppConfig): SpotifyClient {
     },
     async fetchTrack(accessToken, trackId) {
       return spotifyGet<SpotifyTrackDetail>(accessToken, `/tracks/${trackId}`);
+    },
+    async fetchTracks(accessToken, trackIds) {
+      const items: SpotifyTrackDetail[] = [];
+
+      for (let index = 0; index < trackIds.length; index += 50) {
+        const ids = trackIds.slice(index, index + 50);
+        if (ids.length === 0) {
+          continue;
+        }
+
+        const response = await spotifyGet<SpotifyTracksResponse>(
+          accessToken,
+          "/tracks",
+          new URLSearchParams({
+            ids: ids.join(","),
+          }),
+        );
+
+        items.push(
+          ...response.tracks.filter((track): track is SpotifyTrackDetail => track !== null),
+        );
+      }
+
+      return items;
     },
     encrypt(value) {
       return encryptString(value, config.encryptionKey);

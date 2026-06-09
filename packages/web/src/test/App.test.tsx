@@ -1,6 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../lib/routes";
 import { installFetchMock, renderApp, waitForPathname } from "./harness";
 
@@ -94,6 +94,54 @@ function makeTopTrack(id: string, name: string, imageUrl: string | null = "https
   };
 }
 
+
+function makeImportJob(
+  overrides: Partial<{
+    id: string;
+    source: string;
+    status: "queued" | "running" | "completed" | "failed";
+    phase: string;
+    uploadedFiles: string[];
+    filesProcessed: number;
+    rowsScanned: number;
+    imported: number;
+    duplicatesSkipped: number;
+    nonMusicSkipped: number;
+    skippedTracksSkipped: number;
+    invalidRowsSkipped: number;
+    totalTrackIds: number;
+    resolvedTrackIds: number;
+    errorMessage: string | null;
+    createdAt: string;
+    updatedAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+  }> = {},
+) {
+  return {
+    id: "job_1",
+    source: "spotify_history",
+    status: "queued" as const,
+    phase: "upload_received",
+    uploadedFiles: ["Streaming_History_Audio_2025.json"],
+    filesProcessed: 0,
+    rowsScanned: 0,
+    imported: 0,
+    duplicatesSkipped: 0,
+    nonMusicSkipped: 0,
+    skippedTracksSkipped: 0,
+    invalidRowsSkipped: 0,
+    totalTrackIds: 0,
+    resolvedTrackIds: 0,
+    errorMessage: null,
+    createdAt: "2026-06-03T06:00:00.000Z",
+    updatedAt: "2026-06-03T06:00:00.000Z",
+    startedAt: null,
+    completedAt: null,
+    ...overrides,
+  };
+}
+
 function makeHomeMocks() {
   return {
     "GET /api/stats": {
@@ -150,6 +198,10 @@ function makeScopedTrackDetail() {
 
 beforeEach(() => {
   vi.stubGlobal("confirm", vi.fn(() => true));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("bootstrap routing", () => {
@@ -658,6 +710,113 @@ describe("top lists", () => {
 });
 
 describe("settings routing", () => {
+  it("starts a Spotify history import job and renders the completed counters", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": [
+        {
+          body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+        },
+        {
+          body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+        },
+      ],
+      "GET /api/status": [
+        {
+          body: makeAppStatus(),
+        },
+        {
+          body: makeAppStatus(),
+        },
+      ],
+      "GET /api/imports/spotify-history/latest": {
+        body: null,
+      },
+      "POST /api/imports/spotify-history": {
+        status: 202,
+        body: makeImportJob(),
+      },
+      "GET /api/imports/spotify-history/job_1": {
+        body: makeImportJob({
+          status: "completed",
+          phase: "finished",
+          rowsScanned: 52,
+          filesProcessed: 1,
+          imported: 42,
+          duplicatesSkipped: 7,
+          nonMusicSkipped: 2,
+          skippedTracksSkipped: 3,
+          invalidRowsSkipped: 1,
+          totalTrackIds: 44,
+          resolvedTrackIds: 42,
+          startedAt: "2026-06-03T06:00:05.000Z",
+          completedAt: "2026-06-03T06:00:10.000Z",
+          updatedAt: "2026-06-03T06:00:10.000Z",
+        }),
+      },
+    });
+
+    await renderApp("/settings");
+
+    const user = userEvent.setup();
+    const fileInput = await screen.findByLabelText("Export files");
+    const file = new File(['{"endTime":"2025-01-01 00:00"}'], "Streaming_History_Audio_2025.json", {
+      type: "application/json",
+    });
+
+    await user.upload(fileInput, file);
+    await user.click(screen.getByRole("button", { name: "Start import" }));
+
+    expect(await screen.findByText("Spotify history import completed.")).toBeInTheDocument();
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
+    expect(screen.getByText("Files Processed")).toBeInTheDocument();
+    expect(screen.getByText("Imported")).toBeInTheDocument();
+    expect(screen.getAllByText("42").length).toBeGreaterThan(0);
+    expect(screen.getByText("Skipped Tracks Skipped")).toBeInTheDocument();
+    expect(screen.getAllByText("3").length).toBeGreaterThan(0);
+    expect(screen.getByText("Duplicates Skipped")).toBeInTheDocument();
+    expect(screen.getAllByText("7").length).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      expect(fetchMock.count("POST /api/imports/spotify-history")).toBe(1);
+      expect(fetchMock.count("GET /api/imports/spotify-history/job_1")).toBe(1);
+    });
+
+    expect(fetchMock.calls.find((call) => call.key === "POST /api/imports/spotify-history")?.bodyText).toBe(
+      '[["file","Streaming_History_Audio_2025.json"]]',
+    );
+  });
+
+  it("rejects unsupported import files before sending a request", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/imports/spotify-history/latest": {
+        body: null,
+      },
+    });
+
+    await renderApp("/settings");
+
+    const user = userEvent.setup();
+    const fileInput = await screen.findByLabelText("Export files");
+    const file = new File(["not spotify history"], "notes.txt", {
+      type: "text/plain",
+    });
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [file],
+      },
+    });
+
+    expect(await screen.findByText("Only Spotify history `.zip` or `.json` exports are supported.")).toBeInTheDocument();
+    expect(fetchMock.count("POST /api/imports/spotify-history")).toBe(0);
+  });
+
   it("routes back to login after logout", async () => {
     const fetchMock = installFetchMock({
       "GET /api/setup/status": {
@@ -687,6 +846,74 @@ describe("settings routing", () => {
       expect(fetchMock.count("POST /api/auth/logout")).toBe(1);
       expect(fetchMock.count("GET /api/status")).toBe(2);
     });
+  });
+
+  it("shows import request errors from the server", async () => {
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/imports/spotify-history/latest": {
+        body: null,
+      },
+      "POST /api/imports/spotify-history": {
+        status: 400,
+        body: { message: "Import failed: malformed payload." },
+      },
+    });
+
+    await renderApp("/settings");
+
+    const user = userEvent.setup();
+    const fileInput = await screen.findByLabelText("Export files");
+    const file = new File(['{"bad":true}'], "Streaming_History_Audio_2025.json", {
+      type: "application/json",
+    });
+
+    await user.upload(fileInput, file);
+    await user.click(screen.getByRole("button", { name: "Start import" }));
+
+    expect(await screen.findByText("Import failed: malformed payload.")).toBeInTheDocument();
+    expect(fetchMock.count("POST /api/imports/spotify-history")).toBe(1);
+  });
+
+  it("shows failed Spotify history jobs returned by the background job endpoints", async () => {
+    const failedJob = makeImportJob({
+      status: "failed",
+      phase: "parsing_history",
+      errorMessage: "Spotify history payload could not be parsed.",
+      filesProcessed: 1,
+      rowsScanned: 14,
+      invalidRowsSkipped: 14,
+      startedAt: "2026-06-03T06:00:05.000Z",
+      completedAt: "2026-06-03T06:00:06.000Z",
+      updatedAt: "2026-06-03T06:00:06.000Z",
+    });
+    const fetchMock = installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/imports/spotify-history/latest": {
+        body: failedJob,
+      },
+      "GET /api/imports/spotify-history/job_1": {
+        body: failedJob,
+      },
+    });
+
+    await renderApp("/settings");
+
+    expect(await screen.findByText("Spotify history payload could not be parsed.")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Invalid Rows Skipped")).toBeInTheDocument();
+    expect(screen.getAllByText("14").length).toBeGreaterThan(0);
+    expect(fetchMock.count("GET /api/imports/spotify-history/job_1")).toBe(1);
   });
 
   it("routes back to setup after disconnecting Spotify", async () => {

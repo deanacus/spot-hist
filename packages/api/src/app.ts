@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import cookie from "@fastify/cookie";
 import formbody from "@fastify/formbody";
+import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 
@@ -11,10 +12,12 @@ import { createSpotifyClient, type SpotifyClient } from "./auth/spotify.js";
 import { requireSession } from "./auth/session.js";
 import { loadConfig, type AppConfig } from "./config.js";
 import { createDatabase, type DatabaseContext } from "./db/index.js";
+import { createImportRunner } from "./import-runner/index.js";
 import { createPoller } from "./poller/index.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDetailRoutes } from "./routes/details.js";
 import { registerHistoryRoutes } from "./routes/history.js";
+import { registerImportRoutes } from "./routes/import.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerStatsRoutes } from "./routes/stats.js";
 import { registerStatusRoutes } from "./routes/status.js";
@@ -58,17 +61,25 @@ export async function buildApp(options: BuildAppOptions = {}) {
     config,
     database,
     spotify,
+    importRunner: createImportRunner(database, spotify, config),
     requireSession: (request, reply) => requireSession(request, reply, database, config),
     poller: createPoller(database, spotify, config),
   });
 
   await app.register(cookie);
   await app.register(formbody);
+  await app.register(multipart, {
+    attachFieldsToBody: false,
+    limits: {
+      fileSize: 10 * 1024 * 1024,
+    },
+  });
 
   await registerSetupRoutes(app);
   await registerAuthRoutes(app);
   await registerStatusRoutes(app);
   await registerHistoryRoutes(app);
+  await registerImportRoutes(app);
   await registerStatsRoutes(app);
   await registerTopRoutes(app);
   await registerDetailRoutes(app);
@@ -87,14 +98,17 @@ export async function buildApp(options: BuildAppOptions = {}) {
     });
   }
 
-  if (!options.skipPoller) {
-    app.addHook("onReady", async () => {
+  app.addHook("onReady", async () => {
+    app.locals.importRunner.start();
+
+    if (!options.skipPoller) {
       app.locals.poller.start();
-    });
-  }
+    }
+  });
 
   app.addHook("onClose", async () => {
     app.locals.poller.stop();
+    app.locals.importRunner.stop();
     database.client.close();
   });
 
@@ -107,6 +121,7 @@ declare module "fastify" {
       config: AppConfig;
       database: DatabaseContext;
       spotify: SpotifyClient;
+      importRunner: ReturnType<typeof createImportRunner>;
       requireSession: (request: Parameters<typeof requireSession>[0], reply: Parameters<typeof requireSession>[1]) => Promise<void>;
       poller: ReturnType<typeof createPoller>;
     };

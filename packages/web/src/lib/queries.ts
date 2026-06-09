@@ -6,6 +6,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   api,
@@ -15,6 +16,8 @@ import {
   type ArtistDetailPage,
   type HistoryPage,
   type SetupStatus,
+  type SpotifyHistoryImportJob,
+  type SpotifyHistoryImportJobStatus,
   type TrackDetailPage,
 } from "./api";
 import { routes } from "./routes";
@@ -32,6 +35,12 @@ export const queryKeys = {
   topArtists: (limit: number) => ["top-artists", limit] as const,
   topAlbums: (limit: number) => ["top-albums", limit] as const,
   topTracks: (limit: number) => ["top-tracks", limit] as const,
+  spotifyHistoryImportLatest: ["spotify-history-import", "latest"] as const,
+  spotifyHistoryImportJob: (id: string) => ["spotify-history-import", id] as const,
+  historyPage: (limit: number, cursor: string | null) => ["history", limit, cursor] as const,
+  topArtists: (limit: number) => ["top-artists", limit] as const,
+  topAlbums: (limit: number) => ["top-albums", limit] as const,
+  topTracks: (limit: number) => ["top-tracks", limit] as const,
   artistDetail: (id: string) => ["artist-detail", id] as const,
   albumDetail: (id: string) => ["album-detail", id] as const,
   trackDetail: (id: string) => ["track-detail", id] as const,
@@ -45,6 +54,16 @@ export const queryKeys = {
   trackRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
     ["track-recent-plays", id, limit, cursor] as const,
 };
+
+const SPOTIFY_HISTORY_IMPORT_POLL_INTERVAL_MS = 2_000;
+
+function isActiveSpotifyHistoryImportJobStatus(status: SpotifyHistoryImportJobStatus | null | undefined) {
+  return status === "queued" || status === "running";
+}
+
+export function isActiveSpotifyHistoryImportJob(job: SpotifyHistoryImportJob | null | undefined) {
+  return isActiveSpotifyHistoryImportJobStatus(job?.status);
+}
 
 export type ScrobbleScope =
   | { kind: "all" }
@@ -109,6 +128,7 @@ async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ["artist-recent-plays"] }),
     queryClient.invalidateQueries({ queryKey: ["album-recent-plays"] }),
     queryClient.invalidateQueries({ queryKey: ["track-recent-plays"] }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.spotifyHistoryImportLatest }),
   ]);
 }
 
