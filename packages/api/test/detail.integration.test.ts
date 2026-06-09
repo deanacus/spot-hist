@@ -16,6 +16,53 @@ import {
   markDetailRowStale,
 } from "./helpers.js";
 
+type AuthenticatedDetailApp = Awaited<ReturnType<typeof createAuthenticatedApp>>;
+type CleanupConfig = Parameters<typeof cleanupConfig>[0];
+
+async function createSeededDetailApp(
+  configs: CleanupConfig[],
+  options: Parameters<typeof createAuthenticatedApp>[0] = {},
+) {
+  const seed = createDetailSeedData();
+  const result = await createAuthenticatedApp({
+    ...options,
+    seedItems: options.seedItems ?? seed.items,
+  });
+  configs.push(result.config);
+
+  return {
+    seed,
+    ...result,
+  };
+}
+
+async function expectDetailRoutesStatus(
+  app: AuthenticatedDetailApp["app"],
+  routes: ReadonlyArray<readonly ["GET" | "POST", string]>,
+  expectedStatus: number,
+  sessionCookie?: string,
+) {
+  for (const [method, url] of routes) {
+    const response = await app.inject({
+      method,
+      url,
+      cookies: sessionCookie
+        ? {
+            spot_hist_session: sessionCookie,
+          }
+        : undefined,
+    });
+    expect(response.statusCode, `${method} ${url}`).toBe(expectedStatus);
+  }
+}
+
+function createVersionedFetch<T>(factory: (version: "v1" | "v2") => T) {
+  return vi
+    .fn()
+    .mockImplementationOnce(async () => factory("v1"))
+    .mockImplementationOnce(async () => factory("v2"));
+}
+
 function createDetailSeedData() {
   const alphaArtist = createArtist("artist-alpha", "Alpha Artist");
   const betaArtist = createArtist("artist-beta", "Beta Artist");
@@ -358,12 +405,9 @@ describe("detail page endpoints", () => {
   });
 
   it("requires authentication for artist, album, and track detail routes", async () => {
-    const seed = createDetailSeedData();
-    const { app, config } = await createAuthenticatedApp({
+    const { app, seed } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock(),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const routes = [
       ["GET", `/api/artists/${seed.ids.artist}`],
@@ -374,13 +418,7 @@ describe("detail page endpoints", () => {
       ["POST", `/api/tracks/${seed.ids.track}/refresh`],
     ] as const;
 
-    for (const [method, url] of routes) {
-      const response = await app.inject({
-        method,
-        url,
-      });
-      expect(response.statusCode, `${method} ${url}`).toBe(401);
-    }
+    await expectDetailRoutesStatus(app, routes, 401);
 
     await app.close();
   });
@@ -398,32 +436,20 @@ describe("detail page endpoints", () => {
       ["POST", "/api/tracks/missing-track/refresh"],
     ] as const;
 
-    for (const [method, url] of routes) {
-      const response = await app.inject({
-        method,
-        url,
-        cookies: {
-          spot_hist_session: sessionCookie,
-        },
-      });
-      expect(response.statusCode, `${method} ${url}`).toBe(404);
-    }
+    await expectDetailRoutesStatus(app, routes, 404, sessionCookie);
 
     await app.close();
   });
 
   it("returns an artist local-only DTO with missing detail status and local analytics", async () => {
-    const seed = createDetailSeedData();
     const fetchArtist = vi.fn(async () => createArtistCatalogPayload("v1"));
     const fetchArtistAlbums = vi.fn(async () => createArtistAlbumsPayload("v1"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchArtist,
         fetchArtistAlbums,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const { response, body } = await getJson(app, sessionCookie, `/api/artists/${seed.ids.artist}`);
 
@@ -481,15 +507,12 @@ describe("detail page endpoints", () => {
   });
 
   it("returns an album local-only DTO with missing detail status and local analytics", async () => {
-    const seed = createDetailSeedData();
     const fetchAlbum = vi.fn(async () => createAlbumCatalogPayload("v1"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchAlbum,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const { response, body } = await getJson(app, sessionCookie, `/api/albums/${seed.ids.album}`);
 
@@ -538,15 +561,12 @@ describe("detail page endpoints", () => {
   });
 
   it("returns a track local-only DTO with missing detail status and local analytics", async () => {
-    const seed = createDetailSeedData();
     const fetchTrack = vi.fn(async () => createTrackCatalogPayload("v1"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchTrack,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const { response, body } = await getJson(app, sessionCookie, `/api/tracks/${seed.ids.track}`);
 
@@ -586,7 +606,7 @@ describe("detail page endpoints", () => {
   });
 
   it("returns paged recent plays metadata with stable ordering across offsets", async () => {
-    const seed = createDetailSeedData();
+    const seedData = createDetailSeedData();
     const alphaArtist = createArtist("artist-alpha", "Alpha Artist");
     const alphaAlbum = createAlbum("album-alpha", "Alpha Album", "https://images/album-alpha.jpg", [
       alphaArtist,
@@ -614,11 +634,10 @@ describe("detail page endpoints", () => {
       }),
     ];
 
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock(),
-      seedItems: [...seed.items, ...extraItems],
+      seedItems: [...seedData.items, ...extraItems],
     });
-    configs.push(config);
 
     const firstPage = await getJson(
       app,
@@ -677,12 +696,9 @@ describe("detail page endpoints", () => {
   });
 
   it("returns 400 for invalid scoped recent-play pagination params", async () => {
-    const seed = createDetailSeedData();
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock(),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const requests = [
       `/api/artists/${seed.ids.artist}/recent-plays?limit=0`,
@@ -697,17 +713,14 @@ describe("detail page endpoints", () => {
   });
 
   it("persists fresh artist detail rows and serves cached artist reads without re-fetch", async () => {
-    const seed = createDetailSeedData();
     const fetchArtist = vi.fn(async () => createArtistCatalogPayload("v1"));
     const fetchArtistAlbums = vi.fn(async () => createArtistAlbumsPayload("v1"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchArtist,
         fetchArtistAlbums,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const refresh = await postJson(app, sessionCookie, `/api/artists/${seed.ids.artist}/refresh`);
 
@@ -779,15 +792,12 @@ describe("detail page endpoints", () => {
   });
 
   it("persists fresh album detail rows and serves cached album reads without re-fetch", async () => {
-    const seed = createDetailSeedData();
     const fetchAlbum = vi.fn(async () => createAlbumCatalogPayload("v1"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchAlbum,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const refresh = await postJson(app, sessionCookie, `/api/albums/${seed.ids.album}/refresh`);
 
@@ -833,17 +843,14 @@ describe("detail page endpoints", () => {
   });
 
   it("persists fresh track detail rows and serves cached track reads without re-fetch", async () => {
-    const seed = createDetailSeedData();
     const fetchTrack = vi.fn(async () => createTrackCatalogPayload("v1"));
     const fetchAlbum = vi.fn(async () => createAlbumCatalogPayload("v1"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchAlbum,
         fetchTrack,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const refresh = await postJson(app, sessionCookie, `/api/tracks/${seed.ids.track}/refresh`);
 
@@ -884,23 +891,14 @@ describe("detail page endpoints", () => {
   });
 
   it("refreshes stale artist detail after the 30-day ttl", async () => {
-    const seed = createDetailSeedData();
-    const fetchArtist = vi
-      .fn()
-      .mockImplementationOnce(async () => createArtistCatalogPayload("v1"))
-      .mockImplementationOnce(async () => createArtistCatalogPayload("v2"));
-    const fetchArtistAlbums = vi
-      .fn()
-      .mockImplementationOnce(async () => createArtistAlbumsPayload("v1"))
-      .mockImplementationOnce(async () => createArtistAlbumsPayload("v2"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const fetchArtist = createVersionedFetch(createArtistCatalogPayload);
+    const fetchArtistAlbums = createVersionedFetch(createArtistAlbumsPayload);
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchArtist,
         fetchArtistAlbums,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     await postJson(app, sessionCookie, `/api/artists/${seed.ids.artist}/refresh`);
     markDetailRowStale(app.locals.database, "artist", seed.ids.artist);
@@ -933,18 +931,12 @@ describe("detail page endpoints", () => {
   });
 
   it("refreshes stale album detail after the 30-day ttl", async () => {
-    const seed = createDetailSeedData();
-    const fetchAlbum = vi
-      .fn()
-      .mockImplementationOnce(async () => createAlbumCatalogPayload("v1"))
-      .mockImplementationOnce(async () => createAlbumCatalogPayload("v2"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const fetchAlbum = createVersionedFetch(createAlbumCatalogPayload);
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchAlbum,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     await postJson(app, sessionCookie, `/api/albums/${seed.ids.album}/refresh`);
     markDetailRowStale(app.locals.database, "album", seed.ids.album);
@@ -984,23 +976,14 @@ describe("detail page endpoints", () => {
   });
 
   it("refreshes stale track detail after the 30-day ttl", async () => {
-    const seed = createDetailSeedData();
-    const fetchTrack = vi
-      .fn()
-      .mockImplementationOnce(async () => createTrackCatalogPayload("v1"))
-      .mockImplementationOnce(async () => createTrackCatalogPayload("v2"));
-    const fetchAlbum = vi
-      .fn()
-      .mockImplementationOnce(async () => createAlbumCatalogPayload("v1"))
-      .mockImplementationOnce(async () => createAlbumCatalogPayload("v2"));
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const fetchTrack = createVersionedFetch(createTrackCatalogPayload);
+    const fetchAlbum = createVersionedFetch(createAlbumCatalogPayload);
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchAlbum,
         fetchTrack,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     await postJson(app, sessionCookie, `/api/tracks/${seed.ids.track}/refresh`);
     markDetailRowStale(app.locals.database, "track", seed.ids.track);
@@ -1036,7 +1019,6 @@ describe("detail page endpoints", () => {
   });
 
   it("deduplicates concurrent artist refresh requests", async () => {
-    const seed = createDetailSeedData();
     let releaseFetch!: () => void;
     let fetchStarted!: () => void;
     const fetchGate = new Promise<void>((resolve) => {
@@ -1053,14 +1035,12 @@ describe("detail page endpoints", () => {
     });
     const fetchArtistAlbums = vi.fn(async () => createArtistAlbumsPayload("v1"));
 
-    const { app, config, sessionCookie } = await createAuthenticatedApp({
+    const { app, seed, sessionCookie } = await createSeededDetailApp(configs, {
       spotify: createSpotifyMock({
         fetchArtist,
         fetchArtistAlbums,
       }),
-      seedItems: seed.items,
     });
-    configs.push(config);
 
     const first = app.inject({
       method: "POST",
