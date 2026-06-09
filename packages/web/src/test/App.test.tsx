@@ -3,21 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../lib/routes";
 import { installFetchMock, renderApp, waitForPathname } from "./harness";
-
-function makeAppStatus() {
-  return {
-    poller: {
-      state: "running" as const,
-      lastPollAt: "2026-06-03T06:00:00.000Z",
-      lastPollResult: "Fetched 5 plays",
-    },
-    account: {
-      displayName: "Dana",
-      email: "dana@example.com",
-      spotifyId: "user_1",
-    },
-  };
-}
+import {
+  cancelScrobbleDeletion,
+  expectNumberedPaginationFlow,
+  installAuthenticatedFetchMock,
+  makeAppStatus,
+  makeImportJob,
+  makePage,
+  openScrobbleDeleteConfirmation,
+} from "./helpers";
 
 function makeStats() {
   return {
@@ -94,61 +88,6 @@ function makeTopTrack(id: string, name: string, imageUrl: string | null = "https
   };
 }
 
-function makePage<T>(items: T[], options?: Partial<{ total: number; offset: number; limit: number }>) {
-  return {
-    items,
-    total: options?.total ?? items.length,
-    offset: options?.offset ?? 0,
-    limit: options?.limit ?? items.length,
-  };
-}
-
-function makeImportJob(
-  overrides: Partial<{
-    id: string;
-    source: string;
-    status: "queued" | "running" | "completed" | "failed";
-    phase: string;
-    uploadedFiles: string[];
-    filesProcessed: number;
-    rowsScanned: number;
-    imported: number;
-    duplicatesSkipped: number;
-    nonMusicSkipped: number;
-    skippedTracksSkipped: number;
-    invalidRowsSkipped: number;
-    totalTrackIds: number;
-    resolvedTrackIds: number;
-    errorMessage: string | null;
-    createdAt: string;
-    updatedAt: string;
-    startedAt: string | null;
-    completedAt: string | null;
-  }> = {},
-) {
-  return {
-    id: "job_1",
-    source: "spotify_history",
-    status: "queued" as const,
-    phase: "upload_received",
-    uploadedFiles: ["Streaming_History_Audio_2025.json"],
-    filesProcessed: 0,
-    rowsScanned: 0,
-    imported: 0,
-    duplicatesSkipped: 0,
-    nonMusicSkipped: 0,
-    skippedTracksSkipped: 0,
-    invalidRowsSkipped: 0,
-    totalTrackIds: 0,
-    resolvedTrackIds: 0,
-    errorMessage: null,
-    createdAt: "2026-06-03T06:00:00.000Z",
-    updatedAt: "2026-06-03T06:00:00.000Z",
-    startedAt: null,
-    completedAt: null,
-    ...overrides,
-  };
-}
 
 function makeHomeMocks() {
   return {
@@ -338,13 +277,7 @@ describe("query-driven auth flows", () => {
 
 describe("home page", () => {
   it("renders exactly the latest 10 scrobbles and no load more button", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    const fetchMock = installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -377,15 +310,7 @@ describe("home page", () => {
   });
 
   it("requests top lists with limit=10 and links to the full pages", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
-      ...makeHomeMocks(),
-    });
+    const fetchMock = installAuthenticatedFetchMock(makeHomeMocks());
 
     await renderApp(routes.home);
 
@@ -418,13 +343,7 @@ describe("home page", () => {
 
 describe("scrobbles page", () => {
   it("uses numbered pagination routes for full history", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    const fetchMock = installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -438,31 +357,18 @@ describe("scrobbles page", () => {
 
     await renderApp(routes.scrobbles);
 
-    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
-    expect(screen.getByText("1")).toHaveAttribute("aria-current", "page");
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "Next" }));
-
-    expect(await screen.findByText("Dawn Echo")).toBeInTheDocument();
-    await waitForPathname(routes.scrobblesPage(2));
-    expect(fetchMock.calls.map((call) => call.url)).toContain("/api/history?offset=50&limit=50");
-    expect(screen.getByText("2")).toHaveAttribute("aria-current", "page");
-
-    await user.click(screen.getByRole("link", { name: "Previous" }));
-
-    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
-    await waitForPathname(routes.scrobbles);
+    await expectNumberedPaginationFlow({
+      pageOneLabel: "Midnight Run",
+      pageTwoLabel: "Dawn Echo",
+      nextPath: routes.scrobblesPage(2),
+      previousPath: routes.scrobbles,
+      expectedRequestUrl: "/api/history?offset=50&limit=50",
+      fetchMock,
+    });
   });
 
   it("shows scrobbles in the primary navigation and marks the section active", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -479,13 +385,7 @@ describe("scrobbles page", () => {
   });
 
   it("canonicalizes /page/1 back to the base scrobbles route", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -501,13 +401,7 @@ describe("scrobbles page", () => {
   });
 
   it("redirects an out-of-range scrobbles page path to the nearest valid page", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -526,13 +420,7 @@ describe("scrobbles page", () => {
   });
 
   it("deletes an individual scrobble from the full scrobbles list", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    const fetchMock = installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -550,12 +438,9 @@ describe("scrobbles page", () => {
     });
 
     await renderApp(routes.scrobbles);
-
     expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Scrobble actions" }));
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const { user } = await openScrobbleDeleteConfirmation();
 
     expect(screen.getByText("Delete this scrobble? This can’t be undone.")).toBeInTheDocument();
 
@@ -571,13 +456,7 @@ describe("scrobbles page", () => {
   });
 
   it("cancels scrobble deletion without sending a delete request", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    const fetchMock = installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -590,23 +469,14 @@ describe("scrobbles page", () => {
 
     expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Scrobble actions" }));
-    await user.click(screen.getByRole("button", { name: "Delete" }));
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await cancelScrobbleDeletion();
 
     expect(screen.getByText("Midnight Run")).toBeInTheDocument();
     expect(fetchMock.count("DELETE /api/history/play_1")).toBe(0);
   });
 
   it("shows an inline error when scrobble deletion fails", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    const fetchMock = installAuthenticatedFetchMock({
       "GET /api/stats": {
         body: makeStats(),
       },
@@ -623,9 +493,7 @@ describe("scrobbles page", () => {
 
     expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Scrobble actions" }));
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const { user } = await openScrobbleDeleteConfirmation();
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(await screen.findByText("Delete failed")).toBeInTheDocument();
@@ -659,13 +527,7 @@ describe("scoped scrobbles routes", () => {
       heading: "Midnight Run scrobbles",
     },
   ])("matches $route for active sessions", async ({ route, detailRequest, detailBody, scrobblesRequest, heading }) => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       [detailRequest]: {
         body: detailBody,
       },
@@ -683,13 +545,7 @@ describe("scoped scrobbles routes", () => {
 
 describe("top lists", () => {
   it("renders top albums with album art", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/top/albums?offset=0&limit=50": {
         body: makePage([makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")], { limit: 50 }),
       },
@@ -705,13 +561,7 @@ describe("top lists", () => {
   });
 
   it("renders top artists with fallback artwork treatment", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/top/artists?offset=0&limit=50": {
         body: makePage([makeTopArtist("artist_1", "North Coast")], { limit: 50 }),
       },
@@ -724,13 +574,7 @@ describe("top lists", () => {
   });
 
   it("renders top artists with Spotify artist images when available", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/top/artists?offset=0&limit=50": {
         body: makePage([makeTopArtist("artist_1", "North Coast", "https://cdn.test/north-coast.png")], { limit: 50 }),
       },
@@ -746,13 +590,7 @@ describe("top lists", () => {
   });
 
   it("renders top tracks empty state", async () => {
-    installFetchMock({
-      "GET /api/setup/status": {
-        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
-      },
-      "GET /api/status": {
-        body: makeAppStatus(),
-      },
+    installAuthenticatedFetchMock({
       "GET /api/top/tracks?offset=0&limit=50": {
         body: makePage([], { limit: 50 }),
       },

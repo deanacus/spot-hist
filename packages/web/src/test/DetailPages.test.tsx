@@ -3,6 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routes } from "../lib/routes";
 import { installFetchMock, renderApp, waitForPathname } from "./harness";
+import {
+  expectNumberedPaginationFlow,
+  installAuthenticatedFetchMock,
+  makeAppStatus,
+  makePage,
+  makeSetupStatus,
+  openScrobbleDeleteConfirmation,
+} from "./helpers";
 
 function makeRecentPlaysPage() {
   return makeRecentPlaysPageSlice([
@@ -25,25 +33,6 @@ function makeRecentPlaysPage() {
       artists: [{ id: "artist_1", name: "North Coast" }],
     },
   ]);
-}
-
-function makeSetupStatus() {
-  return { setupComplete: true, spotifyConnected: true, passwordSet: true };
-}
-
-function makeAppStatus() {
-  return {
-    poller: {
-      state: "running" as const,
-      lastPollAt: "2026-06-03T06:00:00.000Z",
-      lastPollResult: "Fetched 5 plays",
-    },
-    account: {
-      displayName: "Dana",
-      email: "dana@example.com",
-      spotifyId: "user_1",
-    },
-  };
 }
 
 function makeArtistDetail(
@@ -345,12 +334,7 @@ function makeRecentPlaysPageSlice(
   items: Array<ReturnType<typeof makeRecentPlay>>,
   options?: Partial<{ total: number; offset: number; limit: number }>,
 ) {
-  return {
-    items,
-    total: options?.total ?? items.length,
-    offset: options?.offset ?? 0,
-    limit: options?.limit ?? items.length,
-  };
+  return makePage(items, options);
 }
 
 describe("detail page routing", () => {
@@ -396,9 +380,7 @@ describe("detail page navigation", () => {
   ])(
     "shows a scoped View all link and no inline load-more on $route",
     async ({ route, request, body, recentPlaysRequest, scopedScrobblesHref }) => {
-      installFetchMock({
-        "GET /api/setup/status": { body: makeSetupStatus() },
-        "GET /api/status": { body: makeAppStatus() },
+      installAuthenticatedFetchMock({
         [request]: { body },
         [recentPlaysRequest]: {
           body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 2, limit: 5 }),
@@ -414,9 +396,7 @@ describe("detail page navigation", () => {
   );
 
   it("deletes a recent scrobble from the shared detail-page scrobble rows", async () => {
-    const fetchMock = installFetchMock({
-      "GET /api/setup/status": { body: makeSetupStatus() },
-      "GET /api/status": { body: makeAppStatus() },
+    const fetchMock = installAuthenticatedFetchMock({
       "GET /api/albums/album_1": { body: makeAlbumDetail("fresh") },
       "GET /api/albums/album_1/recent-plays?offset=0&limit=5": [
         {
@@ -442,10 +422,7 @@ describe("detail page navigation", () => {
     expect(recentScrobblesSection).not.toBeNull();
 
     const section = recentScrobblesSection as HTMLElement;
-    const user = userEvent.setup();
-
-    await user.click(within(section).getByRole("button", { name: "Scrobble actions" }));
-    await user.click(within(section).getByRole("button", { name: "Delete" }));
+    const { user } = await openScrobbleDeleteConfirmation(section);
     await user.click(within(section).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
@@ -788,9 +765,7 @@ describe("detail page navigation", () => {
   ])(
     "shows the parent section link on $route",
     async ({ route, request, body, recentPlaysRequest, linkName, href }) => {
-      installFetchMock({
-        "GET /api/setup/status": { body: makeSetupStatus() },
-        "GET /api/status": { body: makeAppStatus() },
+      installAuthenticatedFetchMock({
         [request]: { body },
         [recentPlaysRequest]: { body: makeRecentPlaysPage() },
       });
@@ -843,9 +818,7 @@ describe("detail page navigation", () => {
   ])(
     "renders contextual scoped scrobbles chrome and keeps $navName active on $route",
     async ({ route, navName, request, body, recentPlaysRequest, pageOne, headingName, subtitle, backLabel, backHref }) => {
-      installFetchMock({
-        "GET /api/setup/status": { body: makeSetupStatus() },
-        "GET /api/status": { body: makeAppStatus() },
+      installAuthenticatedFetchMock({
         [request]: { body },
         [recentPlaysRequest]: { body: pageOne },
       });
@@ -896,9 +869,7 @@ describe("detail page navigation", () => {
   ])(
     "uses numbered pagination routes on $route",
     async ({ route, request, body, pageOneRequest, pageTwoRequest, pageOneLabel, pageTwoLabel }) => {
-      const fetchMock = installFetchMock({
-        "GET /api/setup/status": { body: makeSetupStatus() },
-        "GET /api/status": { body: makeAppStatus() },
+      const fetchMock = installAuthenticatedFetchMock({
         [request]: { body },
         [pageOneRequest]: {
           body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 120, limit: 50 }),
@@ -913,22 +884,14 @@ describe("detail page navigation", () => {
       });
 
       await renderApp(route);
-
-      expect(await screen.findByText(pageOneLabel)).toBeInTheDocument();
-      expect(screen.getByText("1")).toHaveAttribute("aria-current", "page");
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("link", { name: "Next" }));
-
-      expect(await screen.findByText(pageTwoLabel)).toBeInTheDocument();
-      await waitForPathname(`${route}/page/2`);
-      expect(screen.getByText("2")).toHaveAttribute("aria-current", "page");
-      expect(fetchMock.calls.map((call) => call.url)).toContain(pageTwoRequest.replace("GET ", ""));
-
-      await user.click(screen.getByRole("link", { name: "Previous" }));
-
-      expect(await screen.findByText(pageOneLabel)).toBeInTheDocument();
-      await waitForPathname(route);
+      await expectNumberedPaginationFlow({
+        pageOneLabel,
+        pageTwoLabel,
+        nextPath: `${route}/page/2`,
+        previousPath: route,
+        expectedRequestUrl: pageTwoRequest.replace("GET ", ""),
+        fetchMock,
+      });
     },
   );
 
