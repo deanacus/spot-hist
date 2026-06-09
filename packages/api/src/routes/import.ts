@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import {
   type ImportJobSummary,
@@ -42,6 +42,45 @@ function toImportJobResponse(job: ImportJobSummary | null) {
   };
 }
 
+async function readUploadedImportFiles(request: FastifyRequest) {
+  const uploadedFiles: UploadedImportFile[] = [];
+
+  for await (const part of request.parts()) {
+    if (part.type !== "file") {
+      continue;
+    }
+
+    uploadedFiles.push({
+      filename: part.filename,
+      contentType: part.mimetype,
+      data: await part.toBuffer(),
+    });
+  }
+
+  return uploadedFiles;
+}
+
+function failImportJob(app: FastifyInstance, jobId: string, message: string) {
+  updateImportJob(app.locals.database, jobId, {
+    status: "failed",
+    phase: "failed",
+    errorMessage: message,
+    completedAt: new Date().toISOString(),
+  });
+}
+
+function sendImportError(
+  reply: FastifyReply,
+  statusCode: number,
+  message: string,
+  extra: Record<string, unknown> = {},
+) {
+  reply.code(statusCode).send({
+    message,
+    ...extra,
+  });
+}
+
 export async function registerImportRoutes(app: FastifyInstance) {
   app.post(
     "/api/imports/spotify-history",
@@ -59,19 +98,7 @@ export async function registerImportRoutes(app: FastifyInstance) {
       let jobId: string | null = null;
 
       try {
-        const uploadedFiles: UploadedImportFile[] = [];
-
-        for await (const part of request.parts()) {
-          if (part.type !== "file") {
-            continue;
-          }
-
-          uploadedFiles.push({
-            filename: part.filename,
-            contentType: part.mimetype,
-            data: await part.toBuffer(),
-          });
-        }
+        const uploadedFiles = await readUploadedImportFiles(request);
 
         if (uploadedFiles.length === 0) {
           throw new SpotifyHistoryImportError(400, "Choose at least one Spotify history file to import.");
@@ -99,15 +126,12 @@ export async function registerImportRoutes(app: FastifyInstance) {
           "code" in error &&
           error.code === "FST_REQ_FILE_TOO_LARGE"
         ) {
-          reply.code(413).send({
-            message: "Spotify history uploads are limited to 10 MB per file.",
-          });
+          sendImportError(reply, 413, "Spotify history uploads are limited to 10 MB per file.");
           return;
         }
 
         if (error instanceof ImportJobConflictError) {
-          reply.code(409).send({
-            message: "A Spotify history import is already running.",
+          sendImportError(reply, 409, "A Spotify history import is already running.", {
             job: toImportJobResponse(error.job),
           });
           return;
@@ -115,33 +139,19 @@ export async function registerImportRoutes(app: FastifyInstance) {
 
         if (error instanceof SpotifyHistoryImportError) {
           if (jobId) {
-            updateImportJob(app.locals.database, jobId, {
-              status: "failed",
-              phase: "failed",
-              errorMessage: error.message,
-              completedAt: new Date().toISOString(),
-            });
+            failImportJob(app, jobId, error.message);
           }
 
-          reply.code(error.statusCode).send({
-            message: error.message,
-          });
+          sendImportError(reply, error.statusCode, error.message);
           return;
         }
 
         if (jobId) {
-          updateImportJob(app.locals.database, jobId, {
-            status: "failed",
-            phase: "failed",
-            errorMessage: "Unable to start Spotify history import right now.",
-            completedAt: new Date().toISOString(),
-          });
+          failImportJob(app, jobId, "Unable to start Spotify history import right now.");
         }
 
         request.log.error({ err: error }, "Unable to enqueue Spotify history import.");
-        reply.code(500).send({
-          message: "Unable to start Spotify history import right now.",
-        });
+        sendImportError(reply, 500, "Unable to start Spotify history import right now.");
       }
     },
   );

@@ -64,6 +64,76 @@ function isoNow() {
   return new Date().toISOString();
 }
 
+const importJobPatchColumns = {
+  status: "status",
+  phase: "phase",
+  uploadPath: "upload_path",
+  uploadedFiles: "uploaded_files_json",
+  filesProcessed: "files_processed",
+  rowsScanned: "rows_scanned",
+  imported: "imported",
+  duplicatesSkipped: "duplicates_skipped",
+  nonMusicSkipped: "non_music_skipped",
+  skippedTracksSkipped: "skipped_tracks_skipped",
+  invalidRowsSkipped: "invalid_rows_skipped",
+  totalTrackIds: "total_track_ids",
+  resolvedTrackIds: "resolved_track_ids",
+  errorMessage: "error_message",
+  startedAt: "started_at",
+  completedAt: "completed_at",
+} as const;
+
+type ImportJobPatch = Partial<
+  Pick<
+    ImportJobSummary,
+    | "status"
+    | "phase"
+    | "uploadPath"
+    | "uploadedFiles"
+    | "filesProcessed"
+    | "rowsScanned"
+    | "imported"
+    | "duplicatesSkipped"
+    | "nonMusicSkipped"
+    | "skippedTracksSkipped"
+    | "invalidRowsSkipped"
+    | "totalTrackIds"
+    | "resolvedTrackIds"
+    | "errorMessage"
+    | "startedAt"
+    | "completedAt"
+  >
+>;
+
+function serializeImportJobPatchValue(
+  key: keyof typeof importJobPatchColumns,
+  value: ImportJobPatch[keyof ImportJobPatch],
+) {
+  return key === "uploadedFiles" ? JSON.stringify(value) : value;
+}
+
+function buildImportJobUpdate(patch: ImportJobPatch) {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  for (const [key, column] of Object.entries(importJobPatchColumns) as Array<
+    [keyof typeof importJobPatchColumns, string]
+  >) {
+    const value = patch[key];
+    if (value === undefined) {
+      continue;
+    }
+
+    sets.push(`${column} = ?`);
+    values.push(serializeImportJobPatchValue(key, value));
+  }
+
+  return {
+    sets,
+    values,
+  };
+}
+
 function mapImportJobRow(row: ImportJobRow | undefined): ImportJobSummary | null {
   if (!row) {
     return null;
@@ -196,95 +266,9 @@ export function claimNextImportJob(database: DatabaseContext, source = "spotify_
 export function updateImportJob(
   database: DatabaseContext,
   id: string | number,
-  patch: Partial<
-    Pick<
-      ImportJobSummary,
-      | "status"
-      | "phase"
-      | "uploadPath"
-      | "uploadedFiles"
-      | "filesProcessed"
-      | "rowsScanned"
-      | "imported"
-      | "duplicatesSkipped"
-      | "nonMusicSkipped"
-      | "skippedTracksSkipped"
-      | "invalidRowsSkipped"
-      | "totalTrackIds"
-      | "resolvedTrackIds"
-      | "errorMessage"
-      | "startedAt"
-      | "completedAt"
-    >
-  >,
+  patch: ImportJobPatch,
 ) {
-  const sets: string[] = [];
-  const values: unknown[] = [];
-
-  if (patch.status !== undefined) {
-    sets.push("status = ?");
-    values.push(patch.status);
-  }
-  if (patch.phase !== undefined) {
-    sets.push("phase = ?");
-    values.push(patch.phase);
-  }
-  if (patch.uploadPath !== undefined) {
-    sets.push("upload_path = ?");
-    values.push(patch.uploadPath);
-  }
-  if (patch.uploadedFiles !== undefined) {
-    sets.push("uploaded_files_json = ?");
-    values.push(JSON.stringify(patch.uploadedFiles));
-  }
-  if (patch.filesProcessed !== undefined) {
-    sets.push("files_processed = ?");
-    values.push(patch.filesProcessed);
-  }
-  if (patch.rowsScanned !== undefined) {
-    sets.push("rows_scanned = ?");
-    values.push(patch.rowsScanned);
-  }
-  if (patch.imported !== undefined) {
-    sets.push("imported = ?");
-    values.push(patch.imported);
-  }
-  if (patch.duplicatesSkipped !== undefined) {
-    sets.push("duplicates_skipped = ?");
-    values.push(patch.duplicatesSkipped);
-  }
-  if (patch.nonMusicSkipped !== undefined) {
-    sets.push("non_music_skipped = ?");
-    values.push(patch.nonMusicSkipped);
-  }
-  if (patch.skippedTracksSkipped !== undefined) {
-    sets.push("skipped_tracks_skipped = ?");
-    values.push(patch.skippedTracksSkipped);
-  }
-  if (patch.invalidRowsSkipped !== undefined) {
-    sets.push("invalid_rows_skipped = ?");
-    values.push(patch.invalidRowsSkipped);
-  }
-  if (patch.totalTrackIds !== undefined) {
-    sets.push("total_track_ids = ?");
-    values.push(patch.totalTrackIds);
-  }
-  if (patch.resolvedTrackIds !== undefined) {
-    sets.push("resolved_track_ids = ?");
-    values.push(patch.resolvedTrackIds);
-  }
-  if (patch.errorMessage !== undefined) {
-    sets.push("error_message = ?");
-    values.push(patch.errorMessage);
-  }
-  if (patch.startedAt !== undefined) {
-    sets.push("started_at = ?");
-    values.push(patch.startedAt);
-  }
-  if (patch.completedAt !== undefined) {
-    sets.push("completed_at = ?");
-    values.push(patch.completedAt);
-  }
+  const { sets, values } = buildImportJobUpdate(patch);
 
   sets.push("updated_at = ?");
   values.push(isoNow());
