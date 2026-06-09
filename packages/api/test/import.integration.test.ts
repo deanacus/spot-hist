@@ -8,37 +8,12 @@ import {
   createAlbum,
   createArtist,
   createAuthenticatedApp,
+  createSpotifyHistoryImportJob,
   createPlay,
   createSpotifyMock,
   createTestConfig,
+  waitForSpotifyHistoryImportJob,
 } from "./helpers.js";
-
-function createMultipartPayload(
-  files: Array<{ filename: string; contentType: string; content: Buffer }>,
-) {
-  const boundary = "spot-hist-test-boundary";
-  const chunks: Buffer[] = [];
-
-  for (const file of files) {
-    chunks.push(
-      Buffer.from(
-        `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="file"; filename="${file.filename}"\r\n` +
-          `Content-Type: ${file.contentType}\r\n\r\n`,
-        "utf8",
-      ),
-    );
-    chunks.push(file.content);
-    chunks.push(Buffer.from("\r\n", "utf8"));
-  }
-
-  chunks.push(Buffer.from(`--${boundary}--\r\n`, "utf8"));
-
-  return {
-    boundary,
-    payload: Buffer.concat(chunks),
-  };
-}
 
 function makeImportRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -67,37 +42,6 @@ function makeImportRow(overrides: Partial<Record<string, unknown>> = {}) {
     incognito_mode: false,
     ...overrides,
   };
-}
-
-async function waitForImportJobTerminal(
-  app: Awaited<ReturnType<typeof createAuthenticatedApp>>["app"],
-  sessionCookie: string,
-  jobId: string,
-) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const response = await app.inject({
-      method: "GET",
-      url: `/api/imports/spotify-history/${jobId}`,
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    const job = response.json() as {
-      status: string;
-      phase: string | null;
-      [key: string]: unknown;
-    };
-
-    if (job.status === "completed" || job.status === "failed") {
-      return job;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-
-  throw new Error(`Timed out waiting for import job ${jobId} to finish.`);
 }
 
 describe("spotify history import jobs", () => {
@@ -156,7 +100,7 @@ describe("spotify history import jobs", () => {
       .prepare("UPDATE account SET poll_cursor = ? WHERE id = 1")
       .run(17_000);
 
-    const multipart = createMultipartPayload([
+    const createResponse = await createSpotifyHistoryImportJob(app, sessionCookie, [
       {
         filename: "Streaming_History_Audio_2024.json",
         contentType: "application/json",
@@ -191,23 +135,11 @@ describe("spotify history import jobs", () => {
       },
     ]);
 
-    const createResponse = await app.inject({
-      method: "POST",
-      url: "/api/imports/spotify-history",
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-      headers: {
-        "content-type": `multipart/form-data; boundary=${multipart.boundary}`,
-      },
-      payload: multipart.payload,
-    });
-
     expect(createResponse.statusCode).toBe(202);
     const createdJob = createResponse.json() as { id: string; status: string };
     expect(["queued", "running"]).toContain(createdJob.status);
 
-    const completedJob = await waitForImportJobTerminal(app, sessionCookie, createdJob.id);
+    const completedJob = await waitForSpotifyHistoryImportJob(app, sessionCookie, createdJob.id);
     expect(completedJob).toMatchObject({
       status: "completed",
       phase: "completed",
@@ -308,7 +240,7 @@ describe("spotify history import jobs", () => {
       ),
     });
 
-    const multipart = createMultipartPayload([
+    const createResponse = await createSpotifyHistoryImportJob(app, sessionCookie, [
       {
         filename: "spotify-export.zip",
         contentType: "application/zip",
@@ -316,21 +248,9 @@ describe("spotify history import jobs", () => {
       },
     ]);
 
-    const createResponse = await app.inject({
-      method: "POST",
-      url: "/api/imports/spotify-history",
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-      headers: {
-        "content-type": `multipart/form-data; boundary=${multipart.boundary}`,
-      },
-      payload: multipart.payload,
-    });
-
     expect(createResponse.statusCode).toBe(202);
     const createdJob = createResponse.json() as { id: string };
-    const completedJob = await waitForImportJobTerminal(app, sessionCookie, createdJob.id);
+    const completedJob = await waitForSpotifyHistoryImportJob(app, sessionCookie, createdJob.id);
 
     expect(completedJob).toMatchObject({
       status: "completed",
@@ -364,7 +284,7 @@ describe("spotify history import jobs", () => {
     });
     configs.push(config);
 
-    const multipart = createMultipartPayload([
+    const files = [
       {
         filename: "Streaming_History_Audio_2024.json",
         contentType: "application/json",
@@ -377,33 +297,13 @@ describe("spotify history import jobs", () => {
           "utf8",
         ),
       },
-    ]);
+    ];
 
-    const firstResponse = await app.inject({
-      method: "POST",
-      url: "/api/imports/spotify-history",
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-      headers: {
-        "content-type": `multipart/form-data; boundary=${multipart.boundary}`,
-      },
-      payload: multipart.payload,
-    });
+    const firstResponse = await createSpotifyHistoryImportJob(app, sessionCookie, files);
 
     expect(firstResponse.statusCode).toBe(202);
 
-    const secondResponse = await app.inject({
-      method: "POST",
-      url: "/api/imports/spotify-history",
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-      headers: {
-        "content-type": `multipart/form-data; boundary=${multipart.boundary}`,
-      },
-      payload: multipart.payload,
-    });
+    const secondResponse = await createSpotifyHistoryImportJob(app, sessionCookie, files);
 
     expect(secondResponse.statusCode).toBe(409);
     expect(secondResponse.json()).toMatchObject({
@@ -412,7 +312,7 @@ describe("spotify history import jobs", () => {
 
     resolveFetch?.();
     const createdJob = firstResponse.json() as { id: string };
-    await waitForImportJobTerminal(app, sessionCookie, createdJob.id);
+    await waitForSpotifyHistoryImportJob(app, sessionCookie, createdJob.id);
 
     await app.close();
   });
@@ -421,25 +321,13 @@ describe("spotify history import jobs", () => {
     const { app, config, sessionCookie } = await createAuthenticatedApp();
     configs.push(config);
 
-    const multipart = createMultipartPayload([
+    const response = await createSpotifyHistoryImportJob(app, sessionCookie, [
       {
         filename: "Streaming_History_Audio_2024.json",
         contentType: "application/json",
         content: Buffer.alloc(10 * 1024 * 1024 + 1, 97),
       },
     ]);
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/imports/spotify-history",
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-      headers: {
-        "content-type": `multipart/form-data; boundary=${multipart.boundary}`,
-      },
-      payload: multipart.payload,
-    });
 
     expect(response.statusCode).toBe(413);
     expect(response.json()).toEqual({

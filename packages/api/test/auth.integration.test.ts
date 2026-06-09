@@ -1,12 +1,27 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
-import { createTestConfig, cleanupConfig } from "./helpers.js";
+import {
+  cleanupConfig,
+  connectSpotifyAccount,
+  createAuthenticatedSession,
+  createSpotifyMock,
+  createTestConfig,
+} from "./helpers.js";
+
+async function createAuthApp(
+  config: ReturnType<typeof createTestConfig>,
+  spotifyOverrides: Parameters<typeof createSpotifyMock>[0] = {},
+) {
+  return buildApp({
+    config,
+    skipPoller: true,
+    spotify: createSpotifyMock(spotifyOverrides),
+  });
+}
 
 describe("auth and setup flow", () => {
   const configs: ReturnType<typeof createTestConfig>[] = [];
-
-  beforeEach(() => {});
 
   afterEach(() => {
     for (const config of configs.splice(0)) {
@@ -18,37 +33,8 @@ describe("auth and setup flow", () => {
     const config = createTestConfig();
     configs.push(config);
 
-    const app = await buildApp({
-      config,
-      skipPoller: true,
-      spotify: {
-        buildAuthUrl: () => "https://example.com",
-        exchangeCode: async () => ({
-          access_token: "access",
-          token_type: "Bearer",
-          expires_in: 3600,
-          refresh_token: "refresh",
-          scope: "user-read-recently-played user-read-email",
-        }),
-        refreshAccessToken: async () => ({
-          access_token: "access",
-          token_type: "Bearer",
-          expires_in: 3600,
-          refresh_token: "refresh",
-          scope: "user-read-recently-played user-read-email",
-        }),
-        fetchProfile: async () => ({
-          id: "spotify-user",
-          display_name: "Listener",
-          email: "listener@example.com",
-        }),
-        fetchRecentlyPlayed: async () => ({
-          items: [],
-          next: null,
-        }),
-        encrypt: (value) => value,
-        decrypt: (value) => value,
-      },
+    const app = await createAuthApp(config, {
+      buildAuthUrl: () => "https://example.com",
     });
 
     const before = await app.inject({
@@ -80,61 +66,11 @@ describe("auth and setup flow", () => {
     const config = createTestConfig();
     configs.push(config);
 
-    const app = await buildApp({
-      config,
-      skipPoller: true,
-      spotify: {
-        buildAuthUrl: (state) => `https://example.com/authorize?state=${state}`,
-        exchangeCode: async () => ({
-          access_token: "access",
-          token_type: "Bearer",
-          expires_in: 3600,
-          refresh_token: "refresh",
-          scope: "user-read-recently-played user-read-email",
-        }),
-        refreshAccessToken: async () => ({
-          access_token: "access",
-          token_type: "Bearer",
-          expires_in: 3600,
-          refresh_token: "refresh",
-          scope: "user-read-recently-played user-read-email",
-        }),
-        fetchProfile: async () => ({
-          id: "spotify-user",
-          display_name: "Listener",
-          email: "listener@example.com",
-        }),
-        fetchRecentlyPlayed: async () => ({
-          items: [],
-          next: null,
-        }),
-        encrypt: (value) => value,
-        decrypt: (value) => value,
-      },
+    const app = await createAuthApp(config, {
+      buildAuthUrl: (state) => `https://example.com/authorize?state=${state}`,
     });
 
-    await app.inject({
-      method: "POST",
-      url: "/api/setup/password",
-      payload: { password: "secret" },
-    });
-
-    const loginRedirect = await app.inject({
-      method: "GET",
-      url: "/api/auth/login",
-    });
-    const stateCookie = loginRedirect.cookies.find((cookie) => cookie.name === "spot_hist_oauth_state");
-    expect(loginRedirect.statusCode).toBe(302);
-    expect(stateCookie).toBeTruthy();
-
-    const callback = await app.inject({
-      method: "GET",
-      url: `/api/auth/callback?code=code123&state=${stateCookie?.value}`,
-      cookies: {
-        spot_hist_oauth_state: stateCookie?.value ?? "",
-      },
-    });
-    expect(callback.statusCode).toBe(302);
+    await connectSpotifyAccount(app);
 
     const status = await app.inject({
       method: "GET",
@@ -153,72 +89,18 @@ describe("auth and setup flow", () => {
     const config = createTestConfig();
     configs.push(config);
 
-    const app = await buildApp({
-      config,
-      skipPoller: true,
-      spotify: {
-        buildAuthUrl: (state) => `https://example.com/authorize?state=${state}`,
-        exchangeCode: async () => ({
-          access_token: "access",
-          token_type: "Bearer",
-          expires_in: 3600,
-          refresh_token: "refresh",
-          scope: "user-read-recently-played user-read-email",
-        }),
-        refreshAccessToken: async () => ({
-          access_token: "access",
-          token_type: "Bearer",
-          expires_in: 3600,
-          refresh_token: "refresh",
-          scope: "user-read-recently-played user-read-email",
-        }),
-        fetchProfile: async () => ({
-          id: "spotify-user",
-          display_name: "Listener",
-          email: "listener@example.com",
-        }),
-        fetchRecentlyPlayed: async () => ({
-          items: [],
-          next: null,
-        }),
-        encrypt: (value) => value,
-        decrypt: (value) => value,
-      },
+    const app = await createAuthApp(config, {
+      buildAuthUrl: (state) => `https://example.com/authorize?state=${state}`,
     });
 
-    await app.inject({
-      method: "POST",
-      url: "/api/setup/password",
-      payload: { password: "secret" },
-    });
-
-    const loginRedirect = await app.inject({
-      method: "GET",
-      url: "/api/auth/login",
-    });
-    const stateCookie = loginRedirect.cookies.find((cookie) => cookie.name === "spot_hist_oauth_state");
-
-    await app.inject({
-      method: "GET",
-      url: `/api/auth/callback?code=code123&state=${stateCookie?.value}`,
-      cookies: {
-        spot_hist_oauth_state: stateCookie?.value ?? "",
-      },
-    });
-
-    const session = await app.inject({
-      method: "POST",
-      url: "/api/auth/session",
-      payload: { password: "secret" },
-    });
-    const sessionCookie = session.cookies.find((cookie) => cookie.name === "spot_hist_session");
-    expect(sessionCookie).toBeTruthy();
+    await connectSpotifyAccount(app);
+    const sessionCookie = await createAuthenticatedSession(app);
 
     const status = await app.inject({
       method: "GET",
       url: "/api/status",
       cookies: {
-        spot_hist_session: sessionCookie?.value ?? "",
+        spot_hist_session: sessionCookie,
       },
     });
 

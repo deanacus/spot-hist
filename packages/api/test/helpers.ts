@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,6 +11,13 @@ import type { DatabaseContext } from "../src/db/index.js";
 import { persistRecentlyPlayedItems, storeConnectedAccount } from "../src/services/repository.js";
 import type { SpotifyClient } from "../src/auth/spotify.js";
 import type { SpotifyRecentlyPlayedItem } from "../src/types/spotify.js";
+
+export type TestApp = Awaited<ReturnType<typeof buildApp>>;
+export type MultipartTestFile = {
+  filename: string;
+  contentType: string;
+  content: Buffer;
+};
 
 export function createTestConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   const configDir = mkdtempSync(join(tmpdir(), "spot-hist-"));
@@ -281,6 +289,140 @@ export async function createAuthenticatedApp(options: {
     sessionCookie: session.token,
     spotify,
   };
+}
+
+export async function setPassword(app: TestApp, password = "secret") {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/setup/password",
+    payload: { password },
+  });
+
+  expect(response.statusCode).toBe(204);
+  return response;
+}
+
+export async function connectSpotifyAccount(app: TestApp, password = "secret") {
+  await setPassword(app, password);
+
+  const loginRedirect = await app.inject({
+    method: "GET",
+    url: "/api/auth/login",
+  });
+  const stateCookie = loginRedirect.cookies.find((cookie) => cookie.name === "spot_hist_oauth_state");
+
+  expect(loginRedirect.statusCode).toBe(302);
+  expect(stateCookie).toBeTruthy();
+
+  const callback = await app.inject({
+    method: "GET",
+    url: `/api/auth/callback?code=code123&state=${stateCookie?.value}`,
+    cookies: {
+      spot_hist_oauth_state: stateCookie?.value ?? "",
+    },
+  });
+
+  expect(callback.statusCode).toBe(302);
+
+  return {
+    callback,
+    state: stateCookie?.value ?? "",
+  };
+}
+
+export async function createAuthenticatedSession(app: TestApp, password = "secret") {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/session",
+    payload: { password },
+  });
+  const sessionCookie = response.cookies.find((cookie) => cookie.name === "spot_hist_session");
+
+  expect(response.statusCode).toBe(204);
+  expect(sessionCookie).toBeTruthy();
+
+  return sessionCookie?.value ?? "";
+}
+
+export function createMultipartPayload(files: MultipartTestFile[]) {
+  const boundary = "spot-hist-test-boundary";
+  const chunks: Buffer[] = [];
+
+  for (const file of files) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="file"; filename="${file.filename}"\r\n` +
+          `Content-Type: ${file.contentType}\r\n\r\n`,
+        "utf8",
+      ),
+    );
+    chunks.push(file.content);
+    chunks.push(Buffer.from("\r\n", "utf8"));
+  }
+
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, "utf8"));
+
+  return {
+    boundary,
+    payload: Buffer.concat(chunks),
+  };
+}
+
+export async function postMultipartFiles(
+  app: TestApp,
+  sessionCookie: string,
+  url: string,
+  files: MultipartTestFile[],
+) {
+  const multipart = createMultipartPayload(files);
+
+  return app.inject({
+    method: "POST",
+    url,
+    cookies: {
+      spot_hist_session: sessionCookie,
+    },
+    headers: {
+      "content-type": `multipart/form-data; boundary=${multipart.boundary}`,
+    },
+    payload: multipart.payload,
+  });
+}
+
+export async function createSpotifyHistoryImportJob(
+  app: TestApp,
+  sessionCookie: string,
+  files: MultipartTestFile[],
+) {
+  return postMultipartFiles(app, sessionCookie, "/api/imports/spotify-history", files);
+}
+
+export async function waitForSpotifyHistoryImportJob(app: TestApp, sessionCookie: string, jobId: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/imports/spotify-history/${jobId}`,
+      cookies: {
+        spot_hist_session: sessionCookie,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const job = response.json() as {
+      status: string;
+      phase: string | null;
+      [key: string]: unknown;
+    };
+
+    if (job.status === "completed" || job.status === "failed") {
+      return job;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error(`Timed out waiting for import job ${jobId} to finish.`);
 }
 
 export async function expectAuthenticatedRequestsToReturnStatus(
