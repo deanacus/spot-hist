@@ -82,7 +82,7 @@ export function ArtistDetailPage() {
   const attemptedRefreshKeyRef = useRef<string | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
 
-  const recentPlays = recentPlaysQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const recentPlays = recentPlaysQuery.data?.items ?? [];
 
   useEffect(() => {
     attemptedRefreshKeyRef.current = null;

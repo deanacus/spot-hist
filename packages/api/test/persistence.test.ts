@@ -81,7 +81,7 @@ describe("recently played persistence", () => {
     };
 
     await persistRecentlyPlayedItems(database, [item, item]);
-    const page = await getHistoryPage(database, 10, undefined);
+    const page = await getHistoryPage(database, 10, 0);
     expect(page.items).toHaveLength(1);
 
     database.client.close();

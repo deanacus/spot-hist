@@ -56,10 +56,14 @@ export type HistoryItem = {
   artists: ArtistSummary[];
 };
 
-export type HistoryPage = {
-  items: HistoryItem[];
-  nextCursor: string | null;
+export type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number;
 };
+
+export type HistoryPage = PaginatedResponse<HistoryItem>;
 
 export type RankedEntity = {
   playCount: number;
@@ -81,17 +85,11 @@ export type TopTrack = RankedEntity & {
   artists: ArtistSummary[];
 };
 
-export type TopArtistsResponse = {
-  items: TopArtist[];
-};
+export type TopArtistsResponse = PaginatedResponse<TopArtist>;
 
-export type TopAlbumsResponse = {
-  items: TopAlbum[];
-};
+export type TopAlbumsResponse = PaginatedResponse<TopAlbum>;
 
-export type TopTracksResponse = {
-  items: TopTrack[];
-};
+export type TopTracksResponse = PaginatedResponse<TopTrack>;
 
 export type DetailStatus = "fresh" | "stale" | "missing";
 
@@ -375,31 +373,30 @@ export const api = {
   getStats() {
     return request<StatsSummary>("/api/stats");
   },
-  getHistory(cursor?: string | null, limit = 25) {
+  getHistory(offset = 0, limit = 25) {
     const search = new URLSearchParams();
-
-    if (cursor) {
-      search.set("cursor", cursor);
-    }
-
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<HistoryPage>(`/api/history?${search.toString()}`);
   },
-  getTopArtists(limit = 50) {
+  getTopArtists(limit = 50, offset = 0) {
     const search = new URLSearchParams();
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<TopArtistsResponse>(`/api/top/artists?${search.toString()}`);
   },
-  getTopAlbums(limit = 50) {
+  getTopAlbums(limit = 50, offset = 0) {
     const search = new URLSearchParams();
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<TopAlbumsResponse>(`/api/top/albums?${search.toString()}`);
   },
-  getTopTracks(limit = 50) {
+  getTopTracks(limit = 50, offset = 0) {
     const search = new URLSearchParams();
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<TopTracksResponse>(`/api/top/tracks?${search.toString()}`);
@@ -428,35 +425,23 @@ export const api = {
       method: "POST",
     });
   },
-  getArtistRecentPlays(id: string, cursor?: string | null, limit = 20) {
+  getArtistRecentPlays(id: string, offset = 0, limit = 20) {
     const search = new URLSearchParams();
-
-    if (cursor) {
-      search.set("cursor", cursor);
-    }
-
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<HistoryPage>(`/api/artists/${id}/recent-plays?${search.toString()}`);
   },
-  getAlbumRecentPlays(id: string, cursor?: string | null, limit = 20) {
+  getAlbumRecentPlays(id: string, offset = 0, limit = 20) {
     const search = new URLSearchParams();
-
-    if (cursor) {
-      search.set("cursor", cursor);
-    }
-
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<HistoryPage>(`/api/albums/${id}/recent-plays?${search.toString()}`);
   },
-  getTrackRecentPlays(id: string, cursor?: string | null, limit = 20) {
+  getTrackRecentPlays(id: string, offset = 0, limit = 20) {
     const search = new URLSearchParams();
-
-    if (cursor) {
-      search.set("cursor", cursor);
-    }
-
+    search.set("offset", String(offset));
     search.set("limit", String(limit));
 
     return request<HistoryPage>(`/api/tracks/${id}/recent-plays?${search.toString()}`);

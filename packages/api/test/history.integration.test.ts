@@ -88,6 +88,13 @@ async function createAuthenticatedAppWithHistory() {
       artist,
     }),
     createPlay({
+      playedAt: "2024-01-01T01:00:00.000Z",
+      trackId: "track-2b",
+      trackName: "Midnight Run II",
+      album,
+      artist,
+    }),
+    createPlay({
       playedAt: "2024-01-01T02:00:00.000Z",
       trackId: "track-3",
       trackName: "Dawn Echo",
@@ -114,7 +121,7 @@ describe("history endpoint", () => {
     }
   });
 
-  it("returns deterministic cursor pages in reverse chronological order", async () => {
+  it("returns offset pages in deterministic reverse chronological order", async () => {
     const { app, config, sessionCookie } = await createAuthenticatedAppWithHistory();
     configs.push(config);
 
@@ -135,21 +142,17 @@ describe("history endpoint", () => {
         },
         {
           playedAt: "2024-01-01T01:00:00.000Z",
-          track: { id: "track-2", name: "Midnight Run" },
+          track: { id: "track-2b", name: "Midnight Run II" },
         },
       ],
+      total: 4,
+      offset: 0,
+      limit: 2,
     });
-
-    const firstPage = firstPageResponse.json() as {
-      items: Array<{ track: { id: string } }>;
-      nextCursor: string | null;
-    };
-
-    expect(firstPage.nextCursor).toBeTruthy();
 
     const secondPageResponse = await app.inject({
       method: "GET",
-      url: `/api/history?cursor=${firstPage.nextCursor}&limit=2`,
+      url: "/api/history?offset=2&limit=2",
       cookies: {
         spot_hist_session: sessionCookie,
       },
@@ -159,12 +162,46 @@ describe("history endpoint", () => {
     expect(secondPageResponse.json()).toMatchObject({
       items: [
         {
+          playedAt: "2024-01-01T01:00:00.000Z",
+          track: { id: "track-2", name: "Midnight Run" },
+        },
+        {
           playedAt: "2024-01-01T00:00:00.000Z",
           track: { id: "track-1", name: "First Light" },
         },
       ],
-      nextCursor: null,
+      total: 4,
+      offset: 2,
+      limit: 2,
     });
+
+    await app.close();
+  });
+
+  it("returns 400 for invalid history pagination params", async () => {
+    const { app, config, sessionCookie } = await createAuthenticatedAppWithHistory();
+    configs.push(config);
+
+    const invalidRequests = [
+      "/api/history?limit=0",
+      "/api/history?limit=1.5",
+      "/api/history?limit=nope",
+      "/api/history?offset=-1",
+      "/api/history?offset=1.25",
+      "/api/history?offset=nope",
+    ];
+
+    for (const url of invalidRequests) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        cookies: {
+          spot_hist_session: sessionCookie,
+        },
+      });
+
+      expect(response.statusCode, url).toBe(400);
+    }
 
     await app.close();
   });

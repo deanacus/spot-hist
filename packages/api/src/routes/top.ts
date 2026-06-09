@@ -2,13 +2,21 @@ import type { FastifyInstance } from "fastify";
 
 import { getTopAlbums, getTopArtists, getTopTracks } from "../services/repository.js";
 
-function parseLimit(raw: string | undefined) {
-  const parsed = Number(raw ?? 50);
-  if (Number.isNaN(parsed)) {
-    return null;
+function parsePaginationQuery(
+  query: { limit?: string; offset?: string } | undefined,
+  defaultLimit: number,
+) {
+  const limit = query?.limit === undefined ? defaultLimit : Number(query.limit);
+  if (!Number.isInteger(limit) || limit < 1) {
+    return { error: "Invalid limit" } as const;
   }
 
-  return Math.min(Math.max(parsed, 1), 200);
+  const offset = query?.offset === undefined ? 0 : Number(query.offset);
+  if (!Number.isInteger(offset) || offset < 0) {
+    return { error: "Invalid offset" } as const;
+  }
+
+  return { limit, offset } as const;
 }
 
 export async function registerTopRoutes(app: FastifyInstance) {
@@ -18,16 +26,14 @@ export async function registerTopRoutes(app: FastifyInstance) {
       preHandler: app.locals.requireSession,
     },
     async (request, reply) => {
-      const query = request.query as { limit?: string } | undefined;
-      const limit = parseLimit(query?.limit);
-      if (limit === null) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 50);
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      return {
-        items: await getTopArtists(app.locals.database, limit),
-      };
+      return getTopArtists(app.locals.database, pagination.limit, pagination.offset);
     },
   );
 
@@ -37,16 +43,14 @@ export async function registerTopRoutes(app: FastifyInstance) {
       preHandler: app.locals.requireSession,
     },
     async (request, reply) => {
-      const query = request.query as { limit?: string } | undefined;
-      const limit = parseLimit(query?.limit);
-      if (limit === null) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 50);
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      return {
-        items: await getTopAlbums(app.locals.database, limit),
-      };
+      return getTopAlbums(app.locals.database, pagination.limit, pagination.offset);
     },
   );
 
@@ -56,16 +60,14 @@ export async function registerTopRoutes(app: FastifyInstance) {
       preHandler: app.locals.requireSession,
     },
     async (request, reply) => {
-      const query = request.query as { limit?: string } | undefined;
-      const limit = parseLimit(query?.limit);
-      if (limit === null) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 50);
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      return {
-        items: await getTopTracks(app.locals.database, limit),
-      };
+      return getTopTracks(app.locals.database, pagination.limit, pagination.offset);
     },
   );
 }

@@ -16,6 +16,23 @@ function notFound(reply: FastifyReply, entity: string) {
   reply.code(404).send({ message: `${entity} not found` });
 }
 
+function parsePaginationQuery(
+  query: { limit?: string; offset?: string } | undefined,
+  defaultLimit: number,
+) {
+  const limit = query?.limit === undefined ? defaultLimit : Number(query.limit);
+  if (!Number.isInteger(limit) || limit < 1) {
+    return { error: "Invalid limit" } as const;
+  }
+
+  const offset = query?.offset === undefined ? 0 : Number(query.offset);
+  if (!Number.isInteger(offset) || offset < 0) {
+    return { error: "Invalid offset" } as const;
+  }
+
+  return { limit, offset } as const;
+}
+
 export async function registerDetailRoutes(app: FastifyInstance) {
   app.get(
     "/api/artists/:id",
@@ -144,15 +161,20 @@ export async function registerDetailRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const query = request.query as { limit?: string; cursor?: string } | undefined;
-      const limit = Math.min(Math.max(Number(query?.limit ?? 20), 1), 200);
-      
-      if (Number.isNaN(limit)) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 20);
+
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      const page = await getArtistRecentPlaysPage(app.locals.database, id, limit, query?.cursor);
+      const page = await getArtistRecentPlaysPage(
+        app.locals.database,
+        id,
+        pagination.limit,
+        pagination.offset,
+      );
       if (!page) {
         notFound(reply, "Artist");
         return;
@@ -169,15 +191,20 @@ export async function registerDetailRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const query = request.query as { limit?: string; cursor?: string } | undefined;
-      const limit = Math.min(Math.max(Number(query?.limit ?? 20), 1), 200);
-      
-      if (Number.isNaN(limit)) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 20);
+
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      const page = await getAlbumRecentPlaysPage(app.locals.database, id, limit, query?.cursor);
+      const page = await getAlbumRecentPlaysPage(
+        app.locals.database,
+        id,
+        pagination.limit,
+        pagination.offset,
+      );
       if (!page) {
         notFound(reply, "Album");
         return;
@@ -194,15 +221,20 @@ export async function registerDetailRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const query = request.query as { limit?: string; cursor?: string } | undefined;
-      const limit = Math.min(Math.max(Number(query?.limit ?? 20), 1), 200);
-      
-      if (Number.isNaN(limit)) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 20);
+
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      const page = await getTrackRecentPlaysPage(app.locals.database, id, limit, query?.cursor);
+      const page = await getTrackRecentPlaysPage(
+        app.locals.database,
+        id,
+        pagination.limit,
+        pagination.offset,
+      );
       if (!page) {
         notFound(reply, "Track");
         return;

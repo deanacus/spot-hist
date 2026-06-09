@@ -5,29 +5,26 @@ import { routes } from "../lib/routes";
 import { installFetchMock, renderApp, waitForPathname } from "./harness";
 
 function makeRecentPlaysPage() {
-  return {
-    items: [
-      {
-        id: "play_1",
-        playedAt: "2026-06-03T06:00:00.000Z",
-        contextType: "playlist",
-        contextUri: "spotify:playlist:test",
-        track: {
-          id: "track_1",
-          name: "Midnight Run",
-          durationMs: 180000,
-          explicit: false,
-        },
-        album: {
-          id: "album_1",
-          name: "Signals",
-          imageUrl: "https://cdn.test/signals.png",
-        },
-        artists: [{ id: "artist_1", name: "North Coast" }],
+  return makeRecentPlaysPageSlice([
+    {
+      id: "play_1",
+      playedAt: "2026-06-03T06:00:00.000Z",
+      contextType: "playlist",
+      contextUri: "spotify:playlist:test",
+      track: {
+        id: "track_1",
+        name: "Midnight Run",
+        durationMs: 180000,
+        explicit: false,
       },
-    ],
-    nextCursor: null,
-  };
+      album: {
+        id: "album_1",
+        name: "Signals",
+        imageUrl: "https://cdn.test/signals.png",
+      },
+      artists: [{ id: "artist_1", name: "North Coast" }],
+    },
+  ]);
 }
 
 function makeSetupStatus() {
@@ -344,10 +341,15 @@ function makeRecentPlay(id: string, name: string, playedAt = "2026-06-03T06:00:0
   };
 }
 
-function makeRecentPlaysPageSlice(items: Array<ReturnType<typeof makeRecentPlay>>, nextCursor: string | null = null) {
+function makeRecentPlaysPageSlice(
+  items: Array<ReturnType<typeof makeRecentPlay>>,
+  options?: Partial<{ total: number; offset: number; limit: number }>,
+) {
   return {
     items,
-    nextCursor,
+    total: options?.total ?? items.length,
+    offset: options?.offset ?? 0,
+    limit: options?.limit ?? items.length,
   };
 }
 
@@ -374,21 +376,21 @@ describe("detail page navigation", () => {
       route: routes.artist("artist_1"),
       request: "GET /api/artists/artist_1",
       body: makeArtistDetail("fresh"),
-      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?limit=5",
+      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?offset=0&limit=5",
       scopedScrobblesHref: makeScopedScrobblesRoute("artists", "artist_1"),
     },
     {
       route: routes.album("album_1"),
       request: "GET /api/albums/album_1",
       body: makeAlbumDetail("fresh"),
-      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?limit=5",
+      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?offset=0&limit=5",
       scopedScrobblesHref: makeScopedScrobblesRoute("albums", "album_1"),
     },
     {
       route: routes.track("track_1"),
       request: "GET /api/tracks/track_1",
       body: makeTrackDetail("fresh"),
-      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?limit=5",
+      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?offset=0&limit=5",
       scopedScrobblesHref: makeScopedScrobblesRoute("tracks", "track_1"),
     },
   ])(
@@ -399,7 +401,7 @@ describe("detail page navigation", () => {
         "GET /api/status": { body: makeAppStatus() },
         [request]: { body },
         [recentPlaysRequest]: {
-          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 2, limit: 5 }),
         },
       });
 
@@ -479,7 +481,7 @@ describe("detail page navigation", () => {
     installFetchMock({
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
-      "GET /api/top/artists?limit=50": {
+      "GET /api/top/artists?offset=0&limit=50": {
         body: {
           items: [
             {
@@ -488,6 +490,9 @@ describe("detail page navigation", () => {
               lastPlayedAt: "2026-06-03T06:00:00.000Z",
             },
           ],
+          total: 1,
+          offset: 0,
+          limit: 50,
         },
       },
       "GET /api/artists/artist_1": {
@@ -496,7 +501,7 @@ describe("detail page navigation", () => {
           catalogAlbums: ownReleaseCatalog,
         }),
       },
-      "GET /api/artists/artist_1/recent-plays?limit=5": {
+      "GET /api/artists/artist_1/recent-plays?offset=0&limit=5": {
         body: makeRecentPlaysPage(),
       },
     });
@@ -582,7 +587,7 @@ describe("detail page navigation", () => {
           ],
         }),
       },
-      "GET /api/artists/artist_1/recent-plays?limit=5": {
+      "GET /api/artists/artist_1/recent-plays?offset=0&limit=5": {
         body: makeRecentPlaysPage(),
       },
     });
@@ -599,7 +604,7 @@ describe("detail page navigation", () => {
     installFetchMock({
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
-      "GET /api/top/albums?limit=50": {
+      "GET /api/top/albums?offset=0&limit=50": {
         body: {
           items: [
             {
@@ -609,11 +614,14 @@ describe("detail page navigation", () => {
               lastPlayedAt: "2026-06-03T06:00:00.000Z",
             },
           ],
+          total: 1,
+          offset: 0,
+          limit: 50,
         },
       },
       "GET /api/albums/album_1": { body: makeAlbumDetail("fresh") },
-      "GET /api/albums/album_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
-      "GET /api/top/tracks?limit=50": {
+      "GET /api/albums/album_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/top/tracks?offset=0&limit=50": {
         body: {
           items: [
             {
@@ -624,10 +632,13 @@ describe("detail page navigation", () => {
               lastPlayedAt: "2026-06-03T06:00:00.000Z",
             },
           ],
+          total: 1,
+          offset: 0,
+          limit: 50,
         },
       },
       "GET /api/tracks/track_1": { body: makeTrackDetail("fresh") },
-      "GET /api/tracks/track_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/tracks/track_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.albums);
@@ -657,9 +668,9 @@ describe("detail page navigation", () => {
           latestPlayAt: "2026-06-03T06:00:00.000Z",
         },
       },
-      "GET /api/history?limit=10": {
-        body: {
-          items: [
+      "GET /api/history?offset=0&limit=10": {
+        body: makeRecentPlaysPageSlice(
+          [
             {
               id: "play_1",
               playedAt: "2026-06-03T06:00:00.000Z",
@@ -670,26 +681,20 @@ describe("detail page navigation", () => {
               artists: [{ id: "artist_1", name: "North Coast" }],
             },
           ],
-          nextCursor: null,
-        },
+          { total: 1, limit: 10 },
+        ),
       },
-      "GET /api/top/artists?limit=10": {
-        body: {
-          items: [],
-        },
+      "GET /api/top/artists?offset=0&limit=10": {
+        body: { items: [], total: 0, offset: 0, limit: 10 },
       },
-      "GET /api/top/albums?limit=10": {
-        body: {
-          items: [],
-        },
+      "GET /api/top/albums?offset=0&limit=10": {
+        body: { items: [], total: 0, offset: 0, limit: 10 },
       },
-      "GET /api/top/tracks?limit=10": {
-        body: {
-          items: [],
-        },
+      "GET /api/top/tracks?offset=0&limit=10": {
+        body: { items: [], total: 0, offset: 0, limit: 10 },
       },
       "GET /api/tracks/track_1": { body: makeTrackDetail("fresh") },
-      "GET /api/tracks/track_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/tracks/track_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.home);
@@ -716,7 +721,7 @@ describe("detail page navigation", () => {
       route: routes.artist("artist_1"),
       request: "GET /api/artists/artist_1",
       body: makeArtistDetail("fresh"),
-      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?limit=5",
+      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?offset=0&limit=5",
       linkName: "Back to artists",
       href: routes.artists,
     },
@@ -724,7 +729,7 @@ describe("detail page navigation", () => {
       route: routes.album("album_1"),
       request: "GET /api/albums/album_1",
       body: makeAlbumDetail("fresh"),
-      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?limit=5",
+      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?offset=0&limit=5",
       linkName: "Back to albums",
       href: routes.albums,
     },
@@ -732,7 +737,7 @@ describe("detail page navigation", () => {
       route: routes.track("track_1"),
       request: "GET /api/tracks/track_1",
       body: makeTrackDetail("fresh"),
-      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?limit=5",
+      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?offset=0&limit=5",
       linkName: "Back to tracks",
       href: routes.tracks,
     },
@@ -757,9 +762,9 @@ describe("detail page navigation", () => {
       navName: "Artists",
       request: "GET /api/artists/artist_1",
       body: makeArtistDetail("fresh"),
-      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?limit=50",
-      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
-      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")]),
+      recentPlaysRequest: "GET /api/artists/artist_1/recent-plays?offset=0&limit=50",
+      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 120, limit: 50 }),
+      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")], { total: 120, offset: 50, limit: 50 }),
       headingName: "North Coast scrobbles",
       subtitle: "48 scrobbles",
       backLabel: "Back to artist",
@@ -770,9 +775,9 @@ describe("detail page navigation", () => {
       navName: "Albums",
       request: "GET /api/albums/album_1",
       body: makeAlbumDetail("fresh"),
-      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?limit=50",
-      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
-      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")]),
+      recentPlaysRequest: "GET /api/albums/album_1/recent-plays?offset=0&limit=50",
+      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 120, limit: 50 }),
+      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")], { total: 120, offset: 50, limit: 50 }),
       headingName: "Signals scrobbles",
       subtitle: "31 scrobbles",
       backLabel: "Back to album",
@@ -783,9 +788,9 @@ describe("detail page navigation", () => {
       navName: "Tracks",
       request: "GET /api/tracks/track_1",
       body: makeTrackDetail("fresh"),
-      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?limit=50",
-      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
-      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Midnight Run")]),
+      recentPlaysRequest: "GET /api/tracks/track_1/recent-plays?offset=0&limit=50",
+      pageOne: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 120, limit: 50 }),
+      pageTwo: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Midnight Run")], { total: 120, offset: 50, limit: 50 }),
       headingName: "Midnight Run scrobbles",
       subtitle: "18 scrobbles",
       backLabel: "Back to track",
@@ -821,8 +826,8 @@ describe("detail page navigation", () => {
       route: makeScopedScrobblesRoute("artists", "artist_1"),
       request: "GET /api/artists/artist_1",
       body: makeArtistDetail("fresh"),
-      pageOneRequest: "GET /api/artists/artist_1/recent-plays?limit=50",
-      pageTwoRequest: "GET /api/artists/artist_1/recent-plays?cursor=cursor_2&limit=50",
+      pageOneRequest: "GET /api/artists/artist_1/recent-plays?offset=0&limit=50",
+      pageTwoRequest: "GET /api/artists/artist_1/recent-plays?offset=50&limit=50",
       pageOneLabel: "Midnight Run",
       pageTwoLabel: "Dawn Echo",
     },
@@ -830,8 +835,8 @@ describe("detail page navigation", () => {
       route: makeScopedScrobblesRoute("albums", "album_1"),
       request: "GET /api/albums/album_1",
       body: makeAlbumDetail("fresh"),
-      pageOneRequest: "GET /api/albums/album_1/recent-plays?limit=50",
-      pageTwoRequest: "GET /api/albums/album_1/recent-plays?cursor=cursor_2&limit=50",
+      pageOneRequest: "GET /api/albums/album_1/recent-plays?offset=0&limit=50",
+      pageTwoRequest: "GET /api/albums/album_1/recent-plays?offset=50&limit=50",
       pageOneLabel: "Midnight Run",
       pageTwoLabel: "Dawn Echo",
     },
@@ -839,45 +844,68 @@ describe("detail page navigation", () => {
       route: makeScopedScrobblesRoute("tracks", "track_1"),
       request: "GET /api/tracks/track_1",
       body: makeTrackDetail("fresh"),
-      pageOneRequest: "GET /api/tracks/track_1/recent-plays?limit=50",
-      pageTwoRequest: "GET /api/tracks/track_1/recent-plays?cursor=cursor_2&limit=50",
+      pageOneRequest: "GET /api/tracks/track_1/recent-plays?offset=0&limit=50",
+      pageTwoRequest: "GET /api/tracks/track_1/recent-plays?offset=50&limit=50",
       pageOneLabel: "Midnight Run",
       pageTwoLabel: "Dawn Echo",
     },
   ])(
-    "uses Previous and Next pagination on $route",
+    "uses numbered pagination routes on $route",
     async ({ route, request, body, pageOneRequest, pageTwoRequest, pageOneLabel, pageTwoLabel }) => {
       const fetchMock = installFetchMock({
         "GET /api/setup/status": { body: makeSetupStatus() },
         "GET /api/status": { body: makeAppStatus() },
         [request]: { body },
         [pageOneRequest]: {
-          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], "cursor_2"),
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_1", "Midnight Run")], { total: 120, limit: 50 }),
         },
         [pageTwoRequest]: {
-          body: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")]),
+          body: makeRecentPlaysPageSlice([makeRecentPlay("play_2", "Dawn Echo")], {
+            total: 120,
+            offset: 50,
+            limit: 50,
+          }),
         },
       });
 
       await renderApp(route);
 
       expect(await screen.findByText(pageOneLabel)).toBeInTheDocument();
-      expect(screen.getByText("Page 1")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+      expect(screen.getByText("1")).toHaveAttribute("aria-current", "page");
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: "Next" }));
+      await user.click(screen.getByRole("link", { name: "Next" }));
 
       expect(await screen.findByText(pageTwoLabel)).toBeInTheDocument();
-      expect(screen.getByText("Page 2")).toBeInTheDocument();
+      await waitForPathname(`${route}/page/2`);
+      expect(screen.getByText("2")).toHaveAttribute("aria-current", "page");
       expect(fetchMock.calls.map((call) => call.url)).toContain(pageTwoRequest.replace("GET ", ""));
 
-      await user.click(screen.getByRole("button", { name: "Previous" }));
+      await user.click(screen.getByRole("link", { name: "Previous" }));
 
       expect(await screen.findByText(pageOneLabel)).toBeInTheDocument();
-      expect(screen.getByText("Page 1")).toBeInTheDocument();
+      await waitForPathname(route);
     },
   );
+
+  it("redirects an out-of-range scoped scrobbles route to the nearest valid page", async () => {
+    installFetchMock({
+      "GET /api/setup/status": { body: makeSetupStatus() },
+      "GET /api/status": { body: makeAppStatus() },
+      "GET /api/artists/artist_1": { body: makeArtistDetail("fresh") },
+      "GET /api/artists/artist_1/recent-plays?offset=4950&limit=50": {
+        body: makeRecentPlaysPageSlice([], { total: 120, offset: 4950, limit: 50 }),
+      },
+      "GET /api/artists/artist_1/recent-plays?offset=100&limit=50": {
+        body: makeRecentPlaysPageSlice([makeRecentPlay("play_3", "Last Valid Page")], { total: 120, offset: 100, limit: 50 }),
+      },
+    });
+
+    await renderApp(routes.artistScrobblesPage("artist_1", 100));
+
+    expect(await screen.findByText("Last Valid Page")).toBeInTheDocument();
+    await waitForPathname(routes.artistScrobblesPage("artist_1", 3));
+  });
 });
 
 describe("detail page refresh behavior", () => {
@@ -893,7 +921,7 @@ describe("detail page refresh behavior", () => {
         { body: makeArtistDetail("missing") },
         { body: makeArtistDetail("fresh") },
       ],
-      "GET /api/artists/artist_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/artists/artist_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
       "POST /api/artists/artist_1/refresh": async () => {
         await refreshGate;
         return { body: makeArtistDetail("fresh") };
@@ -924,7 +952,7 @@ describe("detail page refresh behavior", () => {
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
       "GET /api/albums/album_1": { body: makeAlbumDetail("stale") },
-      "GET /api/albums/album_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/albums/album_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
       "POST /api/albums/album_1/refresh": {
         status: 429,
         body: { message: "Spotify rate limit reached. Try again later." },
@@ -951,7 +979,7 @@ describe("detail page imagery", () => {
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
       "GET /api/albums/album_1": { body: makeAlbumDetail("fresh") },
-      "GET /api/albums/album_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/albums/album_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.album("album_1"));
@@ -968,7 +996,7 @@ describe("detail page imagery", () => {
       "GET /api/setup/status": { body: makeSetupStatus() },
       "GET /api/status": { body: makeAppStatus() },
       "GET /api/tracks/track_1": { body: makeTrackDetail("fresh") },
-      "GET /api/tracks/track_1/recent-plays?limit=5": { body: makeRecentPlaysPage() },
+      "GET /api/tracks/track_1/recent-plays?offset=0&limit=5": { body: makeRecentPlaysPage() },
     });
 
     await renderApp(routes.track("track_1"));

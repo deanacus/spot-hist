@@ -229,25 +229,28 @@ describe("top list endpoints", () => {
           lastPlayedAt: "2024-01-01T06:00:00.000Z",
         },
       ],
+      total: 2,
+      offset: 0,
+      limit: 2,
     });
 
     await app.close();
   });
 
-  it("returns top albums and tracks with nested entity metadata", async () => {
+  it("returns paged top albums and tracks with nested entity metadata", async () => {
     const { app, config, sessionCookie } = await createAuthenticatedAppWithSeedData();
     configs.push(config);
 
     const albumsResponse = await app.inject({
       method: "GET",
-      url: "/api/top/albums?limit=3",
+      url: "/api/top/albums?limit=2&offset=1",
       cookies: {
         spot_hist_session: sessionCookie,
       },
     });
     const tracksResponse = await app.inject({
       method: "GET",
-      url: "/api/top/tracks?limit=3",
+      url: "/api/top/tracks?limit=2&offset=1",
       cookies: {
         spot_hist_session: sessionCookie,
       },
@@ -256,21 +259,6 @@ describe("top list endpoints", () => {
     expect(albumsResponse.statusCode).toBe(200);
     expect(albumsResponse.json()).toEqual({
       items: [
-        {
-          album: {
-            id: "album-alpha",
-            name: "Alpha Album",
-            imageUrl: "https://image/alpha",
-          },
-          artists: [
-            {
-              id: "artist-alpha",
-              name: "Alpha Artist",
-            },
-          ],
-          playCount: 3,
-          lastPlayedAt: "2024-01-01T02:00:00.000Z",
-        },
         {
           album: {
             id: "album-beta",
@@ -306,32 +294,14 @@ describe("top list endpoints", () => {
           lastPlayedAt: "2024-01-01T06:00:00.000Z",
         },
       ],
+      total: 3,
+      offset: 1,
+      limit: 2,
     });
 
     expect(tracksResponse.statusCode).toBe(200);
     expect(tracksResponse.json()).toEqual({
       items: [
-        {
-          track: {
-            id: "track-alpha",
-            name: "Alpha Song",
-            durationMs: 180000,
-            explicit: false,
-          },
-          album: {
-            id: "album-alpha",
-            name: "Alpha Album",
-            imageUrl: "https://image/alpha",
-          },
-          artists: [
-            {
-              id: "artist-alpha",
-              name: "Alpha Artist",
-            },
-          ],
-          playCount: 3,
-          lastPlayedAt: "2024-01-01T02:00:00.000Z",
-        },
         {
           track: {
             id: "track-beta",
@@ -379,24 +349,36 @@ describe("top list endpoints", () => {
           lastPlayedAt: "2024-01-01T06:00:00.000Z",
         },
       ],
+      total: 3,
+      offset: 1,
+      limit: 2,
     });
 
     await app.close();
   });
 
-  it("returns 400 for an invalid limit", async () => {
+  it("returns 400 for invalid top-list pagination params", async () => {
     const { app, config, sessionCookie } = await createAuthenticatedAppWithSeedData();
     configs.push(config);
 
-    const response = await app.inject({
-      method: "GET",
-      url: "/api/top/albums?limit=banana",
-      cookies: {
-        spot_hist_session: sessionCookie,
-      },
-    });
+    const requests = [
+      "/api/top/artists?limit=banana",
+      "/api/top/albums?limit=0",
+      "/api/top/tracks?offset=-1",
+      "/api/top/tracks?offset=1.5",
+    ];
 
-    expect(response.statusCode).toBe(400);
+    for (const url of requests) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        cookies: {
+          spot_hist_session: sessionCookie,
+        },
+      });
+
+      expect(response.statusCode, url).toBe(400);
+    }
 
     await app.close();
   });

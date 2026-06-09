@@ -94,6 +94,14 @@ function makeTopTrack(id: string, name: string, imageUrl: string | null = "https
   };
 }
 
+function makePage<T>(items: T[], options?: Partial<{ total: number; offset: number; limit: number }>) {
+  return {
+    items,
+    total: options?.total ?? items.length,
+    offset: options?.offset ?? 0,
+    limit: options?.limit ?? items.length,
+  };
+}
 
 function makeImportJob(
   overrides: Partial<{
@@ -147,26 +155,20 @@ function makeHomeMocks() {
     "GET /api/stats": {
       body: makeStats(),
     },
-    "GET /api/history?limit=10": {
-      body: {
-        items: [makeHistoryItem("play_1", "Midnight Run", "https://cdn.test/signals.png")],
-        nextCursor: "cursor_2",
-      },
+    "GET /api/history?offset=0&limit=10": {
+      body: makePage([makeHistoryItem("play_1", "Midnight Run", "https://cdn.test/signals.png")], {
+        total: 11,
+        limit: 10,
+      }),
     },
-    "GET /api/top/artists?limit=10": {
-      body: {
-        items: [makeTopArtist("artist_1", "North Coast")],
-      },
+    "GET /api/top/artists?offset=0&limit=10": {
+      body: makePage([makeTopArtist("artist_1", "North Coast")], { limit: 10 }),
     },
-    "GET /api/top/albums?limit=10": {
-      body: {
-        items: [makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")],
-      },
+    "GET /api/top/albums?offset=0&limit=10": {
+      body: makePage([makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")], { limit: 10 }),
     },
-    "GET /api/top/tracks?limit=10": {
-      body: {
-        items: [makeTopTrack("track_1", "Midnight Run", "https://cdn.test/midnight-run.png")],
-      },
+    "GET /api/top/tracks?offset=0&limit=10": {
+      body: makePage([makeTopTrack("track_1", "Midnight Run", "https://cdn.test/midnight-run.png")], { limit: 10 }),
     },
   };
 }
@@ -300,10 +302,10 @@ describe("query-driven auth flows", () => {
       "GET /api/setup/status",
       "GET /api/status",
       "GET /api/stats",
-      "GET /api/history?limit=10",
-      "GET /api/top/artists?limit=10",
-      "GET /api/top/albums?limit=10",
-      "GET /api/top/tracks?limit=10",
+      "GET /api/history?offset=0&limit=10",
+      "GET /api/top/artists?offset=0&limit=10",
+      "GET /api/top/albums?offset=0&limit=10",
+      "GET /api/top/tracks?offset=0&limit=10",
     ]);
   });
 
@@ -346,28 +348,20 @@ describe("home page", () => {
       "GET /api/stats": {
         body: makeStats(),
       },
-      "GET /api/history?limit=10": {
-        body: {
-          items: Array.from({ length: 10 }, (_, index) =>
-            makeHistoryItem(`play_${index + 1}`, `Track ${index + 1}`),
-          ),
-          nextCursor: "cursor_11",
-        },
+      "GET /api/history?offset=0&limit=10": {
+        body: makePage(
+          Array.from({ length: 10 }, (_, index) => makeHistoryItem(`play_${index + 1}`, `Track ${index + 1}`)),
+          { total: 11, limit: 10 },
+        ),
       },
-      "GET /api/top/artists?limit=10": {
-        body: {
-          items: [makeTopArtist("artist_1", "North Coast")],
-        },
+      "GET /api/top/artists?offset=0&limit=10": {
+        body: makePage([makeTopArtist("artist_1", "North Coast")], { limit: 10 }),
       },
-      "GET /api/top/albums?limit=10": {
-        body: {
-          items: [makeTopAlbum("album_1", "Signals")],
-        },
+      "GET /api/top/albums?offset=0&limit=10": {
+        body: makePage([makeTopAlbum("album_1", "Signals")], { limit: 10 }),
       },
-      "GET /api/top/tracks?limit=10": {
-        body: {
-          items: [makeTopTrack("track_1", "Midnight Run")],
-        },
+      "GET /api/top/tracks?offset=0&limit=10": {
+        body: makePage([makeTopTrack("track_1", "Midnight Run")], { limit: 10 }),
       },
     });
 
@@ -378,7 +372,7 @@ describe("home page", () => {
     expect(screen.queryByText("Track 11")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more scrobbles" })).not.toBeInTheDocument();
-    expect(fetchMock.count("GET /api/history?limit=10")).toBe(1);
+    expect(fetchMock.count("GET /api/history?offset=0&limit=10")).toBe(1);
   });
 
   it("requests top lists with limit=10 and links to the full pages", async () => {
@@ -395,9 +389,9 @@ describe("home page", () => {
     await renderApp(routes.home);
 
     expect((await screen.findAllByText("North Coast")).length).toBeGreaterThan(0);
-    expect(fetchMock.count("GET /api/top/artists?limit=10")).toBe(1);
-    expect(fetchMock.count("GET /api/top/albums?limit=10")).toBe(1);
-    expect(fetchMock.count("GET /api/top/tracks?limit=10")).toBe(1);
+    expect(fetchMock.count("GET /api/top/artists?offset=0&limit=10")).toBe(1);
+    expect(fetchMock.count("GET /api/top/albums?offset=0&limit=10")).toBe(1);
+    expect(fetchMock.count("GET /api/top/tracks?offset=0&limit=10")).toBe(1);
 
     const scrobblesViewAllLink = screen
       .getAllByRole("link", { name: "View all" })
@@ -422,7 +416,7 @@ describe("home page", () => {
 });
 
 describe("scrobbles page", () => {
-  it("uses previous and next pagination for full history", async () => {
+  it("uses numbered pagination routes for full history", async () => {
     const fetchMock = installFetchMock({
       "GET /api/setup/status": {
         body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
@@ -433,34 +427,31 @@ describe("scrobbles page", () => {
       "GET /api/stats": {
         body: makeStats(),
       },
-      "GET /api/history?limit=50": {
-        body: {
-          items: [makeHistoryItem("play_1", "Midnight Run")],
-          nextCursor: "cursor_2",
-        },
+      "GET /api/history?offset=0&limit=50": {
+        body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 120, limit: 50 }),
       },
-      "GET /api/history?cursor=cursor_2&limit=50": {
-        body: {
-          items: [makeHistoryItem("play_2", "Dawn Echo")],
-          nextCursor: null,
-        },
+      "GET /api/history?offset=50&limit=50": {
+        body: makePage([makeHistoryItem("play_2", "Dawn Echo")], { total: 120, offset: 50, limit: 50 }),
       },
     });
 
     await renderApp(routes.scrobbles);
 
     expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByText("1")).toHaveAttribute("aria-current", "page");
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("link", { name: "Next" }));
 
     expect(await screen.findByText("Dawn Echo")).toBeInTheDocument();
-    expect(fetchMock.calls.map((call) => call.url)).toContain("/api/history?cursor=cursor_2&limit=50");
+    await waitForPathname(routes.scrobblesPage(2));
+    expect(fetchMock.calls.map((call) => call.url)).toContain("/api/history?offset=50&limit=50");
+    expect(screen.getByText("2")).toHaveAttribute("aria-current", "page");
 
-    await user.click(screen.getByRole("button", { name: "Previous" }));
+    await user.click(screen.getByRole("link", { name: "Previous" }));
 
     expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+    await waitForPathname(routes.scrobbles);
   });
 
   it("shows scrobbles in the primary navigation and marks the section active", async () => {
@@ -474,19 +465,63 @@ describe("scrobbles page", () => {
       "GET /api/stats": {
         body: makeStats(),
       },
-      "GET /api/history?limit=50": {
-        body: {
-          items: [makeHistoryItem("play_1", "Midnight Run")],
-          nextCursor: null,
-        },
+      "GET /api/history?offset=50&limit=50": {
+        body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 120, offset: 50, limit: 50 }),
       },
     });
 
-    await renderApp(routes.scrobbles);
+    await renderApp(routes.scrobblesPage(2));
 
     const scrobblesNavLink = await screen.findByRole("link", { name: "Scrobbles" });
 
     expect(scrobblesNavLink.className).toContain("bg-(--accent)");
+  });
+
+  it("canonicalizes /page/1 back to the base scrobbles route", async () => {
+    installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/history?offset=0&limit=50": {
+        body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 1, limit: 50 }),
+      },
+    });
+
+    await renderApp("/scrobbles/page/1");
+
+    expect(await screen.findByText("Midnight Run")).toBeInTheDocument();
+    await waitForPathname(routes.scrobbles);
+  });
+
+  it("redirects an out-of-range scrobbles page path to the nearest valid page", async () => {
+    installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/history?offset=4900&limit=50": {
+        body: makePage([], { total: 120, offset: 4900, limit: 50 }),
+      },
+      "GET /api/history?offset=100&limit=50": {
+        body: makePage([makeHistoryItem("play_3", "Last Valid Page")], { total: 120, offset: 100, limit: 50 }),
+      },
+    });
+
+    await renderApp(routes.scrobblesPage(99));
+
+    expect(await screen.findByText("Last Valid Page")).toBeInTheDocument();
+    await waitForPathname(routes.scrobblesPage(3));
   });
 });
 
@@ -496,21 +531,21 @@ describe("scoped scrobbles routes", () => {
       route: makeScopedScrobblesRoute("artists", "artist_1"),
       detailRequest: "GET /api/artists/artist_1",
       detailBody: makeScopedArtistDetail(),
-      scrobblesRequest: "GET /api/artists/artist_1/recent-plays?limit=50",
+      scrobblesRequest: "GET /api/artists/artist_1/recent-plays?offset=0&limit=50",
       heading: "North Coast scrobbles",
     },
     {
       route: makeScopedScrobblesRoute("albums", "album_1"),
       detailRequest: "GET /api/albums/album_1",
       detailBody: makeScopedAlbumDetail(),
-      scrobblesRequest: "GET /api/albums/album_1/recent-plays?limit=50",
+      scrobblesRequest: "GET /api/albums/album_1/recent-plays?offset=0&limit=50",
       heading: "Signals scrobbles",
     },
     {
       route: makeScopedScrobblesRoute("tracks", "track_1"),
       detailRequest: "GET /api/tracks/track_1",
       detailBody: makeScopedTrackDetail(),
-      scrobblesRequest: "GET /api/tracks/track_1/recent-plays?limit=50",
+      scrobblesRequest: "GET /api/tracks/track_1/recent-plays?offset=0&limit=50",
       heading: "Midnight Run scrobbles",
     },
   ])("matches $route for active sessions", async ({ route, detailRequest, detailBody, scrobblesRequest, heading }) => {
@@ -525,10 +560,7 @@ describe("scoped scrobbles routes", () => {
         body: detailBody,
       },
       [scrobblesRequest]: {
-        body: {
-          items: [makeHistoryItem("play_1", "Midnight Run")],
-          nextCursor: null,
-        },
+        body: makePage([makeHistoryItem("play_1", "Midnight Run")], { total: 1, limit: 50 }),
       },
     });
 
@@ -548,10 +580,8 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/albums?limit=50": {
-        body: {
-          items: [makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")],
-        },
+      "GET /api/top/albums?offset=0&limit=50": {
+        body: makePage([makeTopAlbum("album_1", "Signals", "https://cdn.test/signals.png")], { limit: 50 }),
       },
     });
 
@@ -572,10 +602,8 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/artists?limit=50": {
-        body: {
-          items: [makeTopArtist("artist_1", "North Coast")],
-        },
+      "GET /api/top/artists?offset=0&limit=50": {
+        body: makePage([makeTopArtist("artist_1", "North Coast")], { limit: 50 }),
       },
     });
 
@@ -593,10 +621,8 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/artists?limit=50": {
-        body: {
-          items: [makeTopArtist("artist_1", "North Coast", "https://cdn.test/north-coast.png")],
-        },
+      "GET /api/top/artists?offset=0&limit=50": {
+        body: makePage([makeTopArtist("artist_1", "North Coast", "https://cdn.test/north-coast.png")], { limit: 50 }),
       },
     });
 
@@ -617,10 +643,8 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/tracks?limit=50": {
-        body: {
-          items: [],
-        },
+      "GET /api/top/tracks?offset=0&limit=50": {
+        body: makePage([], { limit: 50 }),
       },
     });
 
@@ -642,10 +666,8 @@ describe("top lists", () => {
       "GET /api/status": {
         body: makeAppStatus(),
       },
-      "GET /api/top/tracks?limit=50": {
-        body: {
-          items: [makeTopTrack("track_1", "Midnight Run", "https://cdn.test/midnight-run.png")],
-        },
+      "GET /api/top/tracks?offset=0&limit=50": {
+        body: makePage([makeTopTrack("track_1", "Midnight Run", "https://cdn.test/midnight-run.png")], { limit: 50 }),
       },
     });
 
@@ -706,6 +728,85 @@ describe("top lists", () => {
 
     expect(artistsNavLink.className).toContain("bg-(--accent)");
     expect(scrobblesNavLink.className).not.toContain("bg-(--accent)");
+  });
+
+  it("uses numbered page routes on top artist pages", async () => {
+    installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/top/artists?offset=0&limit=50": {
+        body: makePage(Array.from({ length: 50 }, (_, index) => makeTopArtist(`artist_${index + 1}`, `Artist ${index + 1}`)), {
+          total: 260,
+          limit: 50,
+        }),
+      },
+      "GET /api/top/artists?offset=100&limit=50": {
+        body: makePage([makeTopArtist("artist_101", "Artist 101")], {
+          total: 260,
+          offset: 100,
+          limit: 50,
+        }),
+      },
+    });
+
+    await renderApp(routes.artistsPage(3));
+
+    expect(await screen.findByText("Artist 101")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Artists" }).className).toContain("bg-(--accent)");
+    expect(screen.getByText("3")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+  });
+
+  it("canonicalizes /page/1 back to the base artist route", async () => {
+    installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/top/artists?offset=0&limit=50": {
+        body: makePage([makeTopArtist("artist_1", "Artist 1")], { total: 1, limit: 50 }),
+      },
+    });
+
+    await renderApp("/artists/page/1");
+
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+    await waitForPathname(routes.artists);
+  });
+
+  it("redirects an invalid artist page path back to the base route", async () => {
+    installFetchMock({
+      "GET /api/setup/status": {
+        body: { setupComplete: true, spotifyConnected: true, passwordSet: true },
+      },
+      "GET /api/status": {
+        body: makeAppStatus(),
+      },
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      "GET /api/top/artists?offset=0&limit=50": {
+        body: makePage([makeTopArtist("artist_1", "Artist 1")], { total: 1, limit: 50 }),
+      },
+    });
+
+    await renderApp("/artists/page/nope");
+
+    expect(await screen.findByText("Artist 1")).toBeInTheDocument();
+    await waitForPathname(routes.artists);
   });
 });
 

@@ -711,6 +711,127 @@ describe("detail page endpoints", () => {
     await app.close();
   });
 
+  it("returns paged recent plays metadata with stable ordering across offsets", async () => {
+    const seed = createDetailSeedData();
+    const alphaArtist = createArtist("artist-alpha", "Alpha Artist");
+    const alphaAlbum = createAlbum("album-alpha", "Alpha Album", "https://images/album-alpha.jpg", [
+      alphaArtist,
+    ]);
+    const extraItems = [
+      createPlay({
+        playedAt: "2024-01-08T00:00:00.000Z",
+        trackId: "track-alpha-late-a",
+        trackName: "Late Arrival A",
+        album: alphaAlbum,
+        artists: [alphaArtist],
+        trackNumber: 3,
+        contextType: "playlist",
+        contextUri: "spotify:playlist:alpha-lates",
+      }),
+      createPlay({
+        playedAt: "2024-01-08T00:00:00.000Z",
+        trackId: "track-alpha-late-b",
+        trackName: "Late Arrival B",
+        album: alphaAlbum,
+        artists: [alphaArtist],
+        trackNumber: 4,
+        contextType: "playlist",
+        contextUri: "spotify:playlist:alpha-lates",
+      }),
+    ];
+
+    const { app, config, sessionCookie } = await createAuthenticatedApp({
+      spotify: createSpotifyMock(),
+      seedItems: [...seed.items, ...extraItems],
+    });
+    configs.push(config);
+
+    const firstPage = await getJson(
+      app,
+      sessionCookie,
+      `/api/artists/${seed.ids.artist}/recent-plays?limit=3&offset=0`,
+    );
+    const secondPage = await getJson(
+      app,
+      sessionCookie,
+      `/api/artists/${seed.ids.artist}/recent-plays?limit=3&offset=3`,
+    );
+
+    expect(firstPage.response.statusCode).toBe(200);
+    expect(firstPage.body).toMatchObject({
+      total: 8,
+      offset: 0,
+      limit: 3,
+      items: [
+        {
+          playedAt: "2024-01-08T00:00:00.000Z",
+          track: { id: "track-alpha-late-b", name: "Late Arrival B" },
+        },
+        {
+          playedAt: "2024-01-08T00:00:00.000Z",
+          track: { id: "track-alpha-late-a", name: "Late Arrival A" },
+        },
+        {
+          playedAt: "2024-01-07T00:00:00.000Z",
+          track: { id: "track-duet", name: "Duet Song" },
+        },
+      ],
+    });
+
+    expect(secondPage.response.statusCode).toBe(200);
+    expect(secondPage.body).toMatchObject({
+      total: 8,
+      offset: 3,
+      limit: 3,
+      items: [
+        {
+          playedAt: "2024-01-06T00:00:00.000Z",
+          track: { id: "track-duet", name: "Duet Song" },
+        },
+        {
+          playedAt: "2024-01-03T00:00:00.000Z",
+          track: { id: "track-alpha-deep-cut", name: "Deep Cut" },
+        },
+        {
+          playedAt: "2024-01-02T00:00:00.000Z",
+          track: { id: "track-alpha-hit", name: "Alpha Hit" },
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("returns 400 for invalid scoped recent-play pagination params", async () => {
+    const seed = createDetailSeedData();
+    const { app, config, sessionCookie } = await createAuthenticatedApp({
+      spotify: createSpotifyMock(),
+      seedItems: seed.items,
+    });
+    configs.push(config);
+
+    const requests = [
+      `/api/artists/${seed.ids.artist}/recent-plays?limit=0`,
+      `/api/albums/${seed.ids.album}/recent-plays?limit=banana`,
+      `/api/tracks/${seed.ids.track}/recent-plays?offset=-1`,
+      `/api/tracks/${seed.ids.track}/recent-plays?offset=2.5`,
+    ];
+
+    for (const url of requests) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        cookies: {
+          spot_hist_session: sessionCookie,
+        },
+      });
+
+      expect(response.statusCode, url).toBe(400);
+    }
+
+    await app.close();
+  });
+
   it("persists fresh artist detail rows and serves cached artist reads without re-fetch", async () => {
     const seed = createDetailSeedData();
     const fetchArtist = vi.fn(async () => createArtistCatalogPayload("v1"));

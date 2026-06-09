@@ -1,74 +1,51 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { formatPlayCount } from "../components/DetailUi";
+import { Pagination } from "../components/Pagination";
 import { ScrobbleList } from "../components/ScrobbleList";
-import { Button, EmptyState, InlineNotice, Shell } from "../components/Ui";
+import { EmptyState, InlineNotice, Shell } from "../components/Ui";
 import { getErrorMessage } from "../lib/errors";
 import {
+  getPageOffset,
   isUnauthorizedError,
   queryKeys,
   useAlbumDetailQuery,
   useArtistDetailQuery,
   useBootstrapQuery,
-  useCursorPageState,
   useScopedHistoryPageQuery,
   useTrackDetailQuery,
 } from "../lib/queries";
-import { routes } from "../lib/routes";
+import { parsePageParam, routes } from "../lib/routes";
 
 const PAGE_SIZE = 50;
 
 type ScopedScrobblesLayoutProps = {
   id: string | undefined;
+  page: number;
   title: string;
   subtitle: string;
   backTo: string;
   backLabel: string;
   emptyTitle: string;
   emptyBody: string;
+  getPageHref: (page: number) => string;
   scope: { kind: "artist" | "album" | "track"; id: string };
   detailPending: boolean;
   detailError: unknown;
   detailErrorFallback: string;
 };
 
-function PaginationFooter({
-  pageIndex,
-  canGoPrevious,
-  isPending,
-  hasNextPage,
-  onPrevious,
-  onNext,
-}: {
-  pageIndex: number;
-  canGoPrevious: boolean;
-  isPending: boolean;
-  hasNextPage: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <Button kind="secondary" size="sm" onClick={onPrevious} disabled={!canGoPrevious || isPending}>
-        Previous
-      </Button>
-      <span className="text-xs font-medium text-(--text-subdued)">Page {pageIndex + 1}</span>
-      <Button kind="secondary" size="sm" onClick={onNext} disabled={!hasNextPage || isPending}>
-        Next
-      </Button>
-    </div>
-  );
-}
-
 function ScopedScrobblesLayout({
   id,
+  page,
   title,
   subtitle,
   backTo,
   backLabel,
   emptyTitle,
   emptyBody,
+  getPageHref,
   scope,
   detailPending,
   detailError,
@@ -78,13 +55,11 @@ function ScopedScrobblesLayout({
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
   const account = status?.account ?? null;
-  const pagination = useCursorPageState(
-    account && id ? `${account.spotifyId}:${scope.kind}:${id}` : id ?? null,
-  );
+  const offset = getPageOffset(page, PAGE_SIZE);
   const scrobblesQuery = useScopedHistoryPageQuery(
     Boolean(status) && Boolean(id),
     scope,
-    pagination.currentCursor,
+    offset,
     PAGE_SIZE,
   );
 
@@ -103,6 +78,13 @@ function ScopedScrobblesLayout({
       ? getErrorMessage(scrobblesQuery.error, "Unable to load scoped scrobbles.")
       : null;
   const errorMessage = detailMessage ?? scrobbleMessage;
+
+  if (scrobblesQuery.data) {
+    const totalPages = Math.max(1, Math.ceil(scrobblesQuery.data.total / PAGE_SIZE));
+    if (page > totalPages) {
+      return <Navigate replace to={getPageHref(totalPages)} />;
+    }
+  }
 
   return (
     <Shell title={title} subtitle={subtitle}>
@@ -134,14 +116,14 @@ function ScopedScrobblesLayout({
             emptyTitle={emptyTitle}
             emptyBody={emptyBody}
             footer={
-              <PaginationFooter
-                pageIndex={pagination.pageIndex}
-                canGoPrevious={pagination.canGoPrevious}
-                isPending={scrobblesQuery.isPending}
-                hasNextPage={Boolean(scrobblesQuery.data?.nextCursor)}
-                onPrevious={pagination.goPrevious}
-                onNext={() => pagination.goNext(scrobblesQuery.data?.nextCursor)}
-              />
+              scrobblesQuery.data ? (
+                <Pagination
+                  currentPage={page}
+                  total={scrobblesQuery.data.total}
+                  pageSize={PAGE_SIZE}
+                  getHref={getPageHref}
+                />
+              ) : null
             }
           />
         </div>
@@ -151,7 +133,10 @@ function ScopedScrobblesLayout({
 }
 
 export function ArtistScrobblesPage() {
-  const { id } = useParams();
+  const { id, page: pageParam } = useParams();
+  const page = parsePageParam(pageParam);
+  const currentPage = page ?? 1;
+
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
   const detailQuery = useArtistDetailQuery(id, Boolean(status));
@@ -164,15 +149,25 @@ export function ArtistScrobblesPage() {
     return formatPlayCount(detailQuery.data.stats.totalPlays);
   }, [detailQuery.data]);
 
+  if (page === null) {
+    return <Navigate replace to={id ? routes.artistScrobbles(id) : routes.artists} />;
+  }
+
+  if (pageParam !== undefined && currentPage === 1) {
+    return <Navigate replace to={id ? routes.artistScrobbles(id) : routes.artists} />;
+  }
+
   return (
     <ScopedScrobblesLayout
       id={id}
+      page={currentPage}
       title={title}
       subtitle={subtitle}
       backTo={id ? routes.artist(id) : routes.artists}
       backLabel="Back to artist"
       emptyTitle="No artist scrobbles yet"
       emptyBody="Scrobbles for this artist will appear here once the tracker collects them."
+      getPageHref={(nextPage) => (id ? routes.artistScrobblesPage(id, nextPage) : routes.artists)}
       scope={id ? { kind: "artist", id } : { kind: "artist", id: "" }}
       detailPending={detailQuery.isPending && !detailQuery.data}
       detailError={detailQuery.error}
@@ -182,7 +177,10 @@ export function ArtistScrobblesPage() {
 }
 
 export function AlbumScrobblesPage() {
-  const { id } = useParams();
+  const { id, page: pageParam } = useParams();
+  const page = parsePageParam(pageParam);
+  const currentPage = page ?? 1;
+
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
   const detailQuery = useAlbumDetailQuery(id, Boolean(status));
@@ -195,15 +193,25 @@ export function AlbumScrobblesPage() {
     return formatPlayCount(detailQuery.data.stats.totalPlays);
   }, [detailQuery.data]);
 
+  if (page === null) {
+    return <Navigate replace to={id ? routes.albumScrobbles(id) : routes.albums} />;
+  }
+
+  if (pageParam !== undefined && currentPage === 1) {
+    return <Navigate replace to={id ? routes.albumScrobbles(id) : routes.albums} />;
+  }
+
   return (
     <ScopedScrobblesLayout
       id={id}
+      page={currentPage}
       title={title}
       subtitle={subtitle}
       backTo={id ? routes.album(id) : routes.albums}
       backLabel="Back to album"
       emptyTitle="No album scrobbles yet"
       emptyBody="Scrobbles for this album will appear here once the tracker collects them."
+      getPageHref={(nextPage) => (id ? routes.albumScrobblesPage(id, nextPage) : routes.albums)}
       scope={id ? { kind: "album", id } : { kind: "album", id: "" }}
       detailPending={detailQuery.isPending && !detailQuery.data}
       detailError={detailQuery.error}
@@ -213,7 +221,10 @@ export function AlbumScrobblesPage() {
 }
 
 export function TrackScrobblesPage() {
-  const { id } = useParams();
+  const { id, page: pageParam } = useParams();
+  const page = parsePageParam(pageParam);
+  const currentPage = page ?? 1;
+
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
   const detailQuery = useTrackDetailQuery(id, Boolean(status));
@@ -226,15 +237,25 @@ export function TrackScrobblesPage() {
     return formatPlayCount(detailQuery.data.stats.totalPlays);
   }, [detailQuery.data]);
 
+  if (page === null) {
+    return <Navigate replace to={id ? routes.trackScrobbles(id) : routes.tracks} />;
+  }
+
+  if (pageParam !== undefined && currentPage === 1) {
+    return <Navigate replace to={id ? routes.trackScrobbles(id) : routes.tracks} />;
+  }
+
   return (
     <ScopedScrobblesLayout
       id={id}
+      page={currentPage}
       title={title}
       subtitle={subtitle}
       backTo={id ? routes.track(id) : routes.tracks}
       backLabel="Back to track"
       emptyTitle="No track scrobbles yet"
       emptyBody="Scrobbles for this track will appear here once the tracker collects them."
+      getPageHref={(nextPage) => (id ? routes.trackScrobblesPage(id, nextPage) : routes.tracks)}
       scope={id ? { kind: "track", id } : { kind: "track", id: "" }}
       detailPending={detailQuery.isPending && !detailQuery.data}
       detailError={detailQuery.error}

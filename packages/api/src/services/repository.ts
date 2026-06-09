@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { desc, eq } from "drizzle-orm";
 
 import type { DatabaseContext } from "../db/index.js";
@@ -17,26 +16,6 @@ import type { SpotifyRecentlyPlayedItem, SpotifyUserProfile } from "../types/spo
 
 function isoNow() {
   return new Date().toISOString();
-}
-
-export function encodeCursor(cursor: { playedAt: string; id: number }) {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-export function decodeCursor(cursor: string | undefined) {
-  if (!cursor) {
-    return null;
-  }
-
-  try {
-    const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
-      playedAt: string;
-      id: number;
-    };
-    return value;
-  } catch {
-    return null;
-  }
 }
 
 export async function getAppConfig(database: DatabaseContext) {
@@ -484,9 +463,17 @@ export async function persistImportedPlayedItems(
 export async function getHistoryPage(
   database: DatabaseContext,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
-  const parsedCursor = decodeCursor(cursor);
+  const countRow = database.client
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+      FROM plays
+      `,
+    )
+    .get() as { total: number };
+
   const rows = database.client
     .prepare(
       `
@@ -518,22 +505,12 @@ export async function getHistoryPage(
       FROM plays
       JOIN tracks ON tracks.id = plays.track_id
       JOIN albums ON albums.id = tracks.album_id
-      WHERE (
-        ? IS NULL
-        OR plays.played_at < ?
-        OR (plays.played_at = ? AND plays.id < ?)
-      )
       ORDER BY plays.played_at DESC, plays.id DESC
       LIMIT ?
+      OFFSET ?
       `,
     )
-    .all(
-      parsedCursor?.playedAt ?? null,
-      parsedCursor?.playedAt ?? null,
-      parsedCursor?.playedAt ?? null,
-      parsedCursor?.id ?? null,
-      limit + 1,
-    ) as Array<{
+    .all(limit, offset) as Array<{
       play_id: number;
       played_at: string;
       context_type: string | null;
@@ -550,11 +527,8 @@ export async function getHistoryPage(
       artists_json: string;
     }>;
 
-  const page = rows.slice(0, limit);
-  const next = rows.length > limit ? rows[limit - 1] : null;
-
   return {
-    items: page.map((row) => ({
+    items: rows.map((row) => ({
       id: row.play_id,
       playedAt: row.played_at,
       contextType: row.context_type,
@@ -575,12 +549,9 @@ export async function getHistoryPage(
         name: string;
       }>,
     })),
-    nextCursor: next
-      ? encodeCursor({
-          playedAt: next.played_at,
-          id: next.play_id,
-        })
-      : null,
+    total: countRow.total,
+    offset,
+    limit,
   };
 }
 
@@ -724,7 +695,19 @@ function getAlbumArtistMap(database: DatabaseContext, albumIds: number[]) {
   return artistMap;
 }
 
-export async function getTopArtists(database: DatabaseContext, limit: number) {
+export async function getTopArtists(database: DatabaseContext, limit: number, offset: number) {
+  const countRow = database.client
+    .prepare(
+      `
+      SELECT COUNT(DISTINCT artists.id) AS total
+      FROM plays
+      JOIN tracks ON tracks.id = plays.track_id
+      JOIN track_artists ON track_artists.track_id = tracks.id
+      JOIN artists ON artists.id = track_artists.artist_id
+      `,
+    )
+    .get() as { total: number };
+
   const rows = database.client
     .prepare(
       `
@@ -743,9 +726,10 @@ export async function getTopArtists(database: DatabaseContext, limit: number) {
       GROUP BY artists.id
       ORDER BY play_count DESC, artists.name COLLATE NOCASE ASC, artists.spotify_id ASC
       LIMIT ?
+      OFFSET ?
       `,
     )
-    .all(limit) as Array<{
+    .all(limit, offset) as Array<{
       artist_spotify_id: string;
       artist_name: string;
       artist_images_json: string | null;
@@ -753,18 +737,34 @@ export async function getTopArtists(database: DatabaseContext, limit: number) {
       last_played_at: string | null;
     }>;
 
-  return rows.map((row) => ({
-    artist: {
-      id: row.artist_spotify_id,
-      name: row.artist_name,
-      imageUrl: parseFirstImageUrl(row.artist_images_json),
-    },
-    playCount: row.play_count,
-    lastPlayedAt: row.last_played_at,
-  })) satisfies TopArtistListItem[];
+  return {
+    items: rows.map((row) => ({
+      artist: {
+        id: row.artist_spotify_id,
+        name: row.artist_name,
+        imageUrl: parseFirstImageUrl(row.artist_images_json),
+      },
+      playCount: row.play_count,
+      lastPlayedAt: row.last_played_at,
+    })) satisfies TopArtistListItem[],
+    total: countRow.total,
+    offset,
+    limit,
+  };
 }
 
-export async function getTopAlbums(database: DatabaseContext, limit: number) {
+export async function getTopAlbums(database: DatabaseContext, limit: number, offset: number) {
+  const countRow = database.client
+    .prepare(
+      `
+      SELECT COUNT(DISTINCT albums.id) AS total
+      FROM plays
+      JOIN tracks ON tracks.id = plays.track_id
+      JOIN albums ON albums.id = tracks.album_id
+      `,
+    )
+    .get() as { total: number };
+
   const rows = database.client
     .prepare(
       `
@@ -781,9 +781,10 @@ export async function getTopAlbums(database: DatabaseContext, limit: number) {
       GROUP BY albums.id
       ORDER BY play_count DESC, albums.name COLLATE NOCASE ASC, albums.spotify_id ASC
       LIMIT ?
+      OFFSET ?
       `,
     )
-    .all(limit) as Array<{
+    .all(limit, offset) as Array<{
       album_id: number;
       album_spotify_id: string;
       album_name: string;
@@ -797,19 +798,34 @@ export async function getTopAlbums(database: DatabaseContext, limit: number) {
     rows.map((row) => row.album_id),
   );
 
-  return rows.map((row) => ({
-    album: {
-      id: row.album_spotify_id,
-      name: row.album_name,
-      imageUrl: row.album_image_url,
-    },
-    artists: artistMap.get(row.album_id) ?? [],
-    playCount: row.play_count,
-    lastPlayedAt: row.last_played_at,
-  })) satisfies TopAlbumListItem[];
+  return {
+    items: rows.map((row) => ({
+      album: {
+        id: row.album_spotify_id,
+        name: row.album_name,
+        imageUrl: row.album_image_url,
+      },
+      artists: artistMap.get(row.album_id) ?? [],
+      playCount: row.play_count,
+      lastPlayedAt: row.last_played_at,
+    })) satisfies TopAlbumListItem[],
+    total: countRow.total,
+    offset,
+    limit,
+  };
 }
 
-export async function getTopTracks(database: DatabaseContext, limit: number) {
+export async function getTopTracks(database: DatabaseContext, limit: number, offset: number) {
+  const countRow = database.client
+    .prepare(
+      `
+      SELECT COUNT(DISTINCT tracks.id) AS total
+      FROM plays
+      JOIN tracks ON tracks.id = plays.track_id
+      `,
+    )
+    .get() as { total: number };
+
   const rows = database.client
     .prepare(
       `
@@ -830,9 +846,10 @@ export async function getTopTracks(database: DatabaseContext, limit: number) {
       GROUP BY tracks.id
       ORDER BY play_count DESC, tracks.name COLLATE NOCASE ASC, tracks.spotify_id ASC
       LIMIT ?
+      OFFSET ?
       `,
     )
-    .all(limit) as Array<{
+    .all(limit, offset) as Array<{
       track_id: number;
       track_spotify_id: string;
       track_name: string;
@@ -850,22 +867,27 @@ export async function getTopTracks(database: DatabaseContext, limit: number) {
     rows.map((row) => row.track_id),
   );
 
-  return rows.map((row) => ({
-    track: {
-      id: row.track_spotify_id,
-      name: row.track_name,
-      durationMs: row.track_duration_ms,
-      explicit: Boolean(row.track_explicit),
-    },
-    album: {
-      id: row.album_spotify_id,
-      name: row.album_name,
-      imageUrl: row.album_image_url,
-    },
-    artists: artistMap.get(row.track_id) ?? [],
-    playCount: row.play_count,
-    lastPlayedAt: row.last_played_at,
-  })) satisfies TopTrackListItem[];
+  return {
+    items: rows.map((row) => ({
+      track: {
+        id: row.track_spotify_id,
+        name: row.track_name,
+        durationMs: row.track_duration_ms,
+        explicit: Boolean(row.track_explicit),
+      },
+      album: {
+        id: row.album_spotify_id,
+        name: row.album_name,
+        imageUrl: row.album_image_url,
+      },
+      artists: artistMap.get(row.track_id) ?? [],
+      playCount: row.play_count,
+      lastPlayedAt: row.last_played_at,
+    })) satisfies TopTrackListItem[],
+    total: countRow.total,
+    offset,
+    limit,
+  };
 }
 
 export async function getStats(database: DatabaseContext) {

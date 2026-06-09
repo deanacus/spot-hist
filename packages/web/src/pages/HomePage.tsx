@@ -25,7 +25,7 @@ export function HomePage() {
   const status = bootstrapQuery.data?.appStatus ?? null;
   const statsQuery = useStatsQuery(Boolean(status));
   const stats = statsQuery.data ?? null;
-  const historyQuery = useHistoryPageQuery(Boolean(status), null, HOME_LIMIT);
+  const historyQuery = useHistoryPageQuery(Boolean(status), 0, HOME_LIMIT);
   const topArtistsQuery = useTopArtistsQuery(Boolean(status), HOME_LIMIT);
   const topAlbumsQuery = useTopAlbumsQuery(Boolean(status), HOME_LIMIT);
   const topTracksQuery = useTopTracksQuery(Boolean(status), HOME_LIMIT);

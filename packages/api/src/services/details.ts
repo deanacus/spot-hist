@@ -15,8 +15,6 @@ import {
 } from "../db/schema.js";
 import {
   getAccessToken,
-  encodeCursor,
-  decodeCursor,
 } from "./repository.js";
 import type {
   SpotifyAlbum,
@@ -966,12 +964,12 @@ async function getRecentPlaysPageForArtist(
   database: DatabaseContext,
   artistId: number,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
   return getRecentPlaysPage(
     database,
     limit,
-    cursor,
+    offset,
     `
     JOIN track_artists filter_track_artists
       ON filter_track_artists.track_id = tracks.id
@@ -985,29 +983,39 @@ async function getRecentPlaysPageForAlbum(
   database: DatabaseContext,
   albumId: number,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
-  return getRecentPlaysPage(database, limit, cursor, `WHERE albums.id = ?`, [albumId]);
+  return getRecentPlaysPage(database, limit, offset, `WHERE albums.id = ?`, [albumId]);
 }
 
 async function getRecentPlaysPageForTrack(
   database: DatabaseContext,
   trackId: number,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
-  return getRecentPlaysPage(database, limit, cursor, `WHERE tracks.id = ?`, [trackId]);
+  return getRecentPlaysPage(database, limit, offset, `WHERE tracks.id = ?`, [trackId]);
 }
 
 async function getRecentPlaysPage(
   database: DatabaseContext,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
   whereSql: string,
   params: unknown[],
 ) {
-  const parsedCursor = decodeCursor(cursor);
-  
+  const countRow = database.client
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+      FROM plays
+      JOIN tracks ON tracks.id = plays.track_id
+      JOIN albums ON albums.id = tracks.album_id
+      ${whereSql}
+      `,
+    )
+    .get(...params) as { total: number };
+
   const rows = database.client
     .prepare(
       `
@@ -1029,16 +1037,12 @@ async function getRecentPlaysPage(
       JOIN tracks ON tracks.id = plays.track_id
       JOIN albums ON albums.id = tracks.album_id
       ${whereSql}
-      ${parsedCursor ? "AND (plays.played_at < ? OR (plays.played_at = ? AND plays.id < ?))" : ""}
       ORDER BY plays.played_at DESC, plays.id DESC
       LIMIT ?
+      OFFSET ?
       `,
     )
-    .all(
-      ...params,
-      ...(parsedCursor ? [parsedCursor.playedAt, parsedCursor.playedAt, parsedCursor.id] : []),
-      limit + 1,
-    ) as Array<{
+    .all(...params, limit, offset) as Array<{
       play_id: number;
       played_at: string;
       context_type: string | null;
@@ -1059,11 +1063,8 @@ async function getRecentPlaysPage(
     rows.map((row) => row.track_id),
   );
 
-  const page = rows.slice(0, limit);
-  const next = rows.length > limit ? page[limit - 1] : null;
-
   return {
-    items: page.map((row) => ({
+    items: rows.map((row) => ({
       id: row.play_id,
       playedAt: row.played_at,
       contextType: row.context_type,
@@ -1083,7 +1084,9 @@ async function getRecentPlaysPage(
       },
       artists: artistMap.get(row.track_id) ?? [],
     })),
-    nextCursor: next ? encodeCursor({ playedAt: next.played_at, id: next.play_id }) : null,
+    total: countRow.total,
+    offset,
+    limit,
   };
 }
 
@@ -1426,40 +1429,40 @@ export async function getArtistRecentPlaysPage(
   database: DatabaseContext,
   spotifyId: string,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
   const artist = await getArtistBySpotifyId(database, spotifyId);
   if (!artist) {
     return null;
   }
 
-  return getRecentPlaysPageForArtist(database, artist.id, limit, cursor);
+  return getRecentPlaysPageForArtist(database, artist.id, limit, offset);
 }
 
 export async function getAlbumRecentPlaysPage(
   database: DatabaseContext,
   spotifyId: string,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
   const album = await getAlbumBySpotifyId(database, spotifyId);
   if (!album) {
     return null;
   }
 
-  return getRecentPlaysPageForAlbum(database, album.id, limit, cursor);
+  return getRecentPlaysPageForAlbum(database, album.id, limit, offset);
 }
 
 export async function getTrackRecentPlaysPage(
   database: DatabaseContext,
   spotifyId: string,
   limit: number,
-  cursor: string | undefined,
+  offset: number,
 ) {
   const track = await getTrackBySpotifyId(database, spotifyId);
   if (!track) {
     return null;
   }
 
-  return getRecentPlaysPageForTrack(database, track.id, limit, cursor);
+  return getRecentPlaysPageForTrack(database, track.id, limit, offset);
 }

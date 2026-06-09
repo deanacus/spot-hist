@@ -1,12 +1,10 @@
 import {
   useQuery,
-  useInfiniteQuery,
   useMutation,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   api,
@@ -31,28 +29,21 @@ export const queryKeys = {
   bootstrap: ["bootstrap"] as const,
   stats: ["stats"] as const,
   history: ["history"] as const,
-  historyPage: (limit: number, cursor: string | null) => ["history", limit, cursor] as const,
-  topArtists: (limit: number) => ["top-artists", limit] as const,
-  topAlbums: (limit: number) => ["top-albums", limit] as const,
-  topTracks: (limit: number) => ["top-tracks", limit] as const,
   spotifyHistoryImportLatest: ["spotify-history-import", "latest"] as const,
   spotifyHistoryImportJob: (id: string) => ["spotify-history-import", id] as const,
-  historyPage: (limit: number, cursor: string | null) => ["history", limit, cursor] as const,
-  topArtists: (limit: number) => ["top-artists", limit] as const,
-  topAlbums: (limit: number) => ["top-albums", limit] as const,
-  topTracks: (limit: number) => ["top-tracks", limit] as const,
+  historyPage: (limit: number, offset: number) => ["history", limit, offset] as const,
+  topArtists: (limit: number, offset: number) => ["top-artists", limit, offset] as const,
+  topAlbums: (limit: number, offset: number) => ["top-albums", limit, offset] as const,
+  topTracks: (limit: number, offset: number) => ["top-tracks", limit, offset] as const,
   artistDetail: (id: string) => ["artist-detail", id] as const,
   albumDetail: (id: string) => ["album-detail", id] as const,
   trackDetail: (id: string) => ["track-detail", id] as const,
-  artistRecentPlays: (id: string, limit: number) => ["artist-recent-plays", id, limit] as const,
-  artistRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
-    ["artist-recent-plays", id, limit, cursor] as const,
-  albumRecentPlays: (id: string, limit: number) => ["album-recent-plays", id, limit] as const,
-  albumRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
-    ["album-recent-plays", id, limit, cursor] as const,
-  trackRecentPlays: (id: string, limit: number) => ["track-recent-plays", id, limit] as const,
-  trackRecentPlaysPage: (id: string, limit: number, cursor: string | null) =>
-    ["track-recent-plays", id, limit, cursor] as const,
+  artistRecentPlaysPage: (id: string, limit: number, offset: number) =>
+    ["artist-recent-plays", id, limit, offset] as const,
+  albumRecentPlaysPage: (id: string, limit: number, offset: number) =>
+    ["album-recent-plays", id, limit, offset] as const,
+  trackRecentPlaysPage: (id: string, limit: number, offset: number) =>
+    ["track-recent-plays", id, limit, offset] as const,
 };
 
 const SPOTIFY_HISTORY_IMPORT_POLL_INTERVAL_MS = 2_000;
@@ -132,33 +123,37 @@ async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
   ]);
 }
 
-function getScopedHistoryQueryKey(scope: ScrobbleScope, limit: number, cursor: string | null) {
+export function getPageOffset(page: number, limit: number) {
+  return Math.max(page - 1, 0) * limit;
+}
+
+function getScopedHistoryQueryKey(scope: ScrobbleScope, limit: number, offset: number) {
   switch (scope.kind) {
     case "all":
-      return queryKeys.historyPage(limit, cursor);
+      return queryKeys.historyPage(limit, offset);
     case "artist":
-      return queryKeys.artistRecentPlaysPage(scope.id, limit, cursor);
+      return queryKeys.artistRecentPlaysPage(scope.id, limit, offset);
     case "album":
-      return queryKeys.albumRecentPlaysPage(scope.id, limit, cursor);
+      return queryKeys.albumRecentPlaysPage(scope.id, limit, offset);
     case "track":
-      return queryKeys.trackRecentPlaysPage(scope.id, limit, cursor);
+      return queryKeys.trackRecentPlaysPage(scope.id, limit, offset);
   }
 }
 
 async function fetchScopedHistoryPage(
   scope: ScrobbleScope,
-  cursor: string | null,
+  offset: number,
   limit: number,
 ): Promise<HistoryPage> {
   switch (scope.kind) {
     case "all":
-      return api.getHistory(cursor, limit);
+      return api.getHistory(offset, limit);
     case "artist":
-      return api.getArtistRecentPlays(scope.id, cursor, limit);
+      return api.getArtistRecentPlays(scope.id, offset, limit);
     case "album":
-      return api.getAlbumRecentPlays(scope.id, cursor, limit);
+      return api.getAlbumRecentPlays(scope.id, offset, limit);
     case "track":
-      return api.getTrackRecentPlays(scope.id, cursor, limit);
+      return api.getTrackRecentPlays(scope.id, offset, limit);
   }
 }
 
@@ -179,87 +174,46 @@ export function useStatsQuery(enabled: boolean) {
   });
 }
 
-export function useHistoryPageQuery(enabled: boolean, cursor: string | null, limit = 25) {
-  return useScopedHistoryPageQuery(enabled, { kind: "all" }, cursor, limit);
+export function useHistoryPageQuery(enabled: boolean, offset = 0, limit = 25) {
+  return useScopedHistoryPageQuery(enabled, { kind: "all" }, offset, limit);
 }
 
 export function useScopedHistoryPageQuery(
   enabled: boolean,
   scope: ScrobbleScope,
-  cursor: string | null,
+  offset = 0,
   limit = 25,
 ) {
   return useQuery({
-    queryKey: getScopedHistoryQueryKey(scope, limit, cursor),
-    queryFn: () => fetchScopedHistoryPage(scope, cursor, limit),
+    queryKey: getScopedHistoryQueryKey(scope, limit, offset),
+    queryFn: () => fetchScopedHistoryPage(scope, offset, limit),
     enabled: enabled && (scope.kind === "all" || Boolean(scope.id)),
     staleTime: 15_000,
   });
 }
 
-export function useCursorPageState(resetKey: string | null | undefined) {
-  const [pageIndex, setPageIndex] = useState(0);
-  const [cursors, setCursors] = useState<Array<string | null>>([null]);
-  const currentCursor = cursors[pageIndex] ?? null;
-
-  useEffect(() => {
-    setPageIndex(0);
-    setCursors([null]);
-  }, [resetKey]);
-
-  const goPrevious = () => {
-    setPageIndex((currentPageIndex) => (currentPageIndex > 0 ? currentPageIndex - 1 : currentPageIndex));
-  };
-
-  const goNext = (nextCursor: string | null | undefined) => {
-    if (!nextCursor) {
-      return;
-    }
-
-    setPageIndex((currentPageIndex) => {
-      setCursors((currentCursors) => {
-        if (currentCursors[currentPageIndex + 1] === nextCursor) {
-          return currentCursors;
-        }
-
-        return [...currentCursors.slice(0, currentPageIndex + 1), nextCursor];
-      });
-
-      return currentPageIndex + 1;
-    });
-  };
-
-  return {
-    pageIndex,
-    currentCursor,
-    canGoPrevious: pageIndex > 0,
-    goPrevious,
-    goNext,
-  };
-}
-
-export function useTopArtistsQuery(enabled: boolean, limit = 50) {
+export function useTopArtistsQuery(enabled: boolean, limit = 50, offset = 0) {
   return useQuery({
-    queryKey: queryKeys.topArtists(limit),
-    queryFn: () => api.getTopArtists(limit),
+    queryKey: queryKeys.topArtists(limit, offset),
+    queryFn: () => api.getTopArtists(limit, offset),
     enabled,
     staleTime: 15_000,
   });
 }
 
-export function useTopAlbumsQuery(enabled: boolean, limit = 50) {
+export function useTopAlbumsQuery(enabled: boolean, limit = 50, offset = 0) {
   return useQuery({
-    queryKey: queryKeys.topAlbums(limit),
-    queryFn: () => api.getTopAlbums(limit),
+    queryKey: queryKeys.topAlbums(limit, offset),
+    queryFn: () => api.getTopAlbums(limit, offset),
     enabled,
     staleTime: 15_000,
   });
 }
 
-export function useTopTracksQuery(enabled: boolean, limit = 50) {
+export function useTopTracksQuery(enabled: boolean, limit = 50, offset = 0) {
   return useQuery({
-    queryKey: queryKeys.topTracks(limit),
-    queryFn: () => api.getTopTracks(limit),
+    queryKey: queryKeys.topTracks(limit, offset),
+    queryFn: () => api.getTopTracks(limit, offset),
     enabled,
     staleTime: 15_000,
   });
@@ -293,33 +247,27 @@ export function useTrackDetailQuery(id: string | undefined, enabled: boolean) {
 }
 
 export function useArtistRecentPlaysQuery(id: string | undefined, enabled: boolean, limit = 20) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.artistRecentPlays(id ?? "", limit),
-    queryFn: ({ pageParam }) => api.getArtistRecentPlays(id ?? "", typeof pageParam === "string" ? pageParam : undefined, limit),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  return useQuery({
+    queryKey: queryKeys.artistRecentPlaysPage(id ?? "", limit, 0),
+    queryFn: () => api.getArtistRecentPlays(id ?? "", 0, limit),
     enabled: enabled && Boolean(id),
     staleTime: 15_000,
   });
 }
 
 export function useAlbumRecentPlaysQuery(id: string | undefined, enabled: boolean, limit = 20) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.albumRecentPlays(id ?? "", limit),
-    queryFn: ({ pageParam }) => api.getAlbumRecentPlays(id ?? "", typeof pageParam === "string" ? pageParam : undefined, limit),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  return useQuery({
+    queryKey: queryKeys.albumRecentPlaysPage(id ?? "", limit, 0),
+    queryFn: () => api.getAlbumRecentPlays(id ?? "", 0, limit),
     enabled: enabled && Boolean(id),
     staleTime: 15_000,
   });
 }
 
 export function useTrackRecentPlaysQuery(id: string | undefined, enabled: boolean, limit = 20) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.trackRecentPlays(id ?? "", limit),
-    queryFn: ({ pageParam }) => api.getTrackRecentPlays(id ?? "", typeof pageParam === "string" ? pageParam : undefined, limit),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  return useQuery({
+    queryKey: queryKeys.trackRecentPlaysPage(id ?? "", limit, 0),
+    queryFn: () => api.getTrackRecentPlays(id ?? "", 0, limit),
     enabled: enabled && Boolean(id),
     staleTime: 15_000,
   });
@@ -379,6 +327,67 @@ export function useDisconnectAccountMutation() {
     mutationFn: () => api.disconnectAccount(),
     onSuccess: async () => {
       await invalidateAuthenticatedQueries(queryClient);
+    },
+  });
+}
+
+export function useLatestSpotifyHistoryImportJobQuery(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.spotifyHistoryImportLatest,
+    queryFn: () => api.getLatestSpotifyHistoryImportJob(),
+    enabled,
+    staleTime: 0,
+  });
+}
+
+export function useSpotifyHistoryImportJobQuery(id: string | null | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.spotifyHistoryImportJob(id ?? ""),
+    queryFn: () => api.getSpotifyHistoryImportJob(id ?? ""),
+    enabled: enabled && Boolean(id),
+    staleTime: 0,
+    refetchInterval: (query) =>
+      isActiveSpotifyHistoryImportJob(query.state.data as SpotifyHistoryImportJob | undefined)
+        ? SPOTIFY_HISTORY_IMPORT_POLL_INTERVAL_MS
+        : false,
+  });
+}
+
+export function useTrackedSpotifyHistoryImportJobQuery(enabled: boolean, preferredJobId?: string | null) {
+  const queryClient = useQueryClient();
+  const latestJobQuery = useLatestSpotifyHistoryImportJobQuery(enabled);
+  const currentJobId = preferredJobId ?? latestJobQuery.data?.id ?? null;
+  const jobQuery = useSpotifyHistoryImportJobQuery(currentJobId, enabled && Boolean(currentJobId));
+  const job = jobQuery.data ?? latestJobQuery.data ?? null;
+  const lastObservedStatusRef = useRef<SpotifyHistoryImportJobStatus | null>(null);
+
+  useEffect(() => {
+    const nextStatus = job?.status ?? null;
+    const lastObservedStatus = lastObservedStatusRef.current;
+
+    if (isActiveSpotifyHistoryImportJobStatus(lastObservedStatus) && nextStatus === "completed") {
+      void invalidateAuthenticatedQueries(queryClient);
+    }
+
+    lastObservedStatusRef.current = nextStatus;
+  }, [job?.status, queryClient]);
+
+  return {
+    latestJobQuery,
+    jobQuery,
+    job,
+  };
+}
+
+export function useStartSpotifyHistoryImportMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (files: File[]) => api.startSpotifyHistoryImport(files),
+    onSuccess: async (job) => {
+      queryClient.setQueryData(queryKeys.spotifyHistoryImportLatest, job);
+      queryClient.setQueryData(queryKeys.spotifyHistoryImportJob(job.id), job);
+      return job;
     },
   });
 }

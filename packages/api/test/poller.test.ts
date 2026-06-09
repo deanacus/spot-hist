@@ -112,7 +112,7 @@ describe("poller", () => {
 
     await poller.trigger();
 
-    const page = await getHistoryPage(database, 10, undefined);
+    const page = await getHistoryPage(database, 10, 0);
     expect(page.items).toHaveLength(1);
     expect(poller.getState().lastSuccessAt).not.toBeNull();
 

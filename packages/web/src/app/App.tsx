@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { LoadingView } from "../components/Ui";
 import type { BootstrapData } from "../lib/queries";
 import { getHomeRoute, useBootstrapQuery } from "../lib/queries";
-import { routes } from "../lib/routes";
+import { pagedRouteSuffix, routes } from "../lib/routes";
 import { AlbumDetailPage } from "../pages/AlbumDetailPage";
 import { ArtistDetailPage } from "../pages/ArtistDetailPage";
 import { HomePage } from "../pages/HomePage";
@@ -132,6 +132,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.scrobbles}/${pagedRouteSuffix}`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <ScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={routes.settings}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
@@ -148,6 +156,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.artists}/${pagedRouteSuffix}`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <TopArtistsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={routes.albums}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
@@ -156,7 +172,23 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.albums}/${pagedRouteSuffix}`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <TopAlbumsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={routes.tracks}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <TopTracksPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path={`${routes.tracks}/${pagedRouteSuffix}`}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
             <TopTracksPage />
@@ -180,6 +212,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.artists}/:id/scrobbles/${pagedRouteSuffix}`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <ArtistScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={`${routes.albums}/:id`}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
@@ -196,6 +236,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path={`${routes.albums}/:id/scrobbles/${pagedRouteSuffix}`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <AlbumScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path={`${routes.tracks}/:id`}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
@@ -205,6 +253,14 @@ export function AppRoutes() {
       />
       <Route
         path={`${routes.tracks}/:id/scrobbles`}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <TrackScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path={`${routes.tracks}/:id/scrobbles/${pagedRouteSuffix}`}
         element={
           <ProtectedRoute bootstrap={bootstrap}>
             <TrackScrobblesPage />

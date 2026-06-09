@@ -2,6 +2,23 @@ import type { FastifyInstance } from "fastify";
 
 import { getHistoryPage } from "../services/repository.js";
 
+function parsePaginationQuery(
+  query: { limit?: string; offset?: string } | undefined,
+  defaultLimit: number,
+) {
+  const limit = query?.limit === undefined ? defaultLimit : Number(query.limit);
+  if (!Number.isInteger(limit) || limit < 1) {
+    return { error: "Invalid limit" } as const;
+  }
+
+  const offset = query?.offset === undefined ? 0 : Number(query.offset);
+  if (!Number.isInteger(offset) || offset < 0) {
+    return { error: "Invalid offset" } as const;
+  }
+
+  return { limit, offset } as const;
+}
+
 export async function registerHistoryRoutes(app: FastifyInstance) {
   app.get(
     "/api/history",
@@ -9,14 +26,14 @@ export async function registerHistoryRoutes(app: FastifyInstance) {
       preHandler: app.locals.requireSession,
     },
     async (request, reply) => {
-      const query = request.query as { limit?: string; cursor?: string } | undefined;
-      const limit = Math.min(Math.max(Number(query?.limit ?? 50), 1), 200);
-      if (Number.isNaN(limit)) {
-        reply.code(400).send({ error: "Invalid limit" });
+      const query = request.query as { limit?: string; offset?: string } | undefined;
+      const pagination = parsePaginationQuery(query, 50);
+      if ("error" in pagination) {
+        reply.code(400).send({ error: pagination.error });
         return;
       }
 
-      return getHistoryPage(app.locals.database, limit, query?.cursor);
+      return getHistoryPage(app.locals.database, pagination.limit, pagination.offset);
     },
   );
 }

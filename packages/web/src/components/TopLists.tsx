@@ -40,9 +40,10 @@ type TopListSectionProps = {
   emptyTitle: string;
   emptyBody: string;
   children: ReactNode;
+  footer?: ReactNode;
 };
 
-function TopListSection({ loading, error, emptyTitle, emptyBody, children }: TopListSectionProps) {
+function TopListSection({ loading, error, emptyTitle, emptyBody, children, footer }: TopListSectionProps) {
   if (loading) {
     return <p className="py-8 text-sm text-(--text-subdued) animate-pulse">Loading...</p>;
   }
@@ -55,7 +56,12 @@ function TopListSection({ loading, error, emptyTitle, emptyBody, children }: Top
     return <EmptyState title={emptyTitle} body={emptyBody} />;
   }
 
-  return <>{children}</>;
+  return (
+    <div className="space-y-4">
+      {children}
+      {footer ? <div>{footer}</div> : null}
+    </div>
+  );
 }
 
 /* ─── Top Artists List ─── */
@@ -63,15 +69,18 @@ type TopArtistsListProps = {
   items: TopArtist[];
   loading: boolean;
   error: string | null;
+  offset?: number;
+  footer?: ReactNode;
 };
 
-export function TopArtistsList({ items, loading, error }: TopArtistsListProps) {
+export function TopArtistsList({ items, loading, error, offset = 0, footer }: TopArtistsListProps) {
   return (
     <TopListSection
       loading={loading}
       error={error}
       emptyTitle="No artists yet"
       emptyBody="Artists will appear here once the tracker has collected enough listening history."
+      footer={footer}
     >
       {items.length > 0 ? (
         <div>
@@ -82,7 +91,7 @@ export function TopArtistsList({ items, loading, error }: TopArtistsListProps) {
               className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)"
             >
               <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
-                {index + 1}
+                {offset + index + 1}
               </span>
               <ArtistArtwork
                 name={item.artist.name}
@@ -116,15 +125,18 @@ type TopAlbumsListProps = {
   items: TopAlbum[];
   loading: boolean;
   error: string | null;
+  offset?: number;
+  footer?: ReactNode;
 };
 
-export function TopAlbumsList({ items, loading, error }: TopAlbumsListProps) {
+export function TopAlbumsList({ items, loading, error, offset = 0, footer }: TopAlbumsListProps) {
   return (
     <TopListSection
       loading={loading}
       error={error}
       emptyTitle="No albums yet"
       emptyBody="Albums will appear here once the tracker has collected enough listening history."
+      footer={footer}
     >
       {items.length > 0 ? (
         <div>
@@ -135,7 +147,7 @@ export function TopAlbumsList({ items, loading, error }: TopAlbumsListProps) {
               className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)"
             >
               <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
-                {index + 1}
+                {offset + index + 1}
               </span>
               <AlbumArt
                 imageUrl={item.album.imageUrl}
@@ -179,15 +191,18 @@ type TopTracksListProps = {
   items: TopTrack[];
   loading: boolean;
   error: string | null;
+  offset?: number;
+  footer?: ReactNode;
 };
 
-export function TopTracksList({ items, loading, error }: TopTracksListProps) {
+export function TopTracksList({ items, loading, error, offset = 0, footer }: TopTracksListProps) {
   return (
     <TopListSection
       loading={loading}
       error={error}
       emptyTitle="No tracks yet"
       emptyBody="Tracks will appear here once the tracker has collected enough listening history to rank them."
+      footer={footer}
     >
       {items.length > 0 ? (
         <div>
@@ -198,7 +213,7 @@ export function TopTracksList({ items, loading, error }: TopTracksListProps) {
               className="group flex items-center gap-3 rounded px-3 py-2.5 transition-colors hover:bg-(--bg-hover)"
             >
               <span className="w-8 text-center text-sm tabular-nums text-(--text-subdued) group-hover:text-(--text-primary)">
-                {index + 1}
+                {offset + index + 1}
               </span>
               <AlbumArt
                 imageUrl={item.album.imageUrl}
