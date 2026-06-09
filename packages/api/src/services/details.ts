@@ -65,6 +65,22 @@ type RecentPlayItem = {
   artists: ArtistSummary[];
 };
 
+type RecentPlayRow = {
+  play_id: number;
+  played_at: string;
+  context_type: string | null;
+  context_uri: string | null;
+  track_id: number;
+  track_spotify_id: string;
+  track_name: string;
+  track_duration_ms: number;
+  track_explicit: number;
+  album_id: number;
+  album_spotify_id: string;
+  album_name: string;
+  album_image_url: string | null;
+};
+
 type ArtistDetailPage = {
   detailStatus: DetailStatus;
   lastEnrichedAt: string | null;
@@ -871,8 +887,17 @@ async function getTrackArtists(database: DatabaseContext, trackId: number) {
   return (await getTrackArtistMap(database, [trackId])).get(trackId) ?? [];
 }
 
-async function getRecentPlays(database: DatabaseContext, whereSql: string, params: unknown[], limit = 5) {
-  const rows = database.client
+function queryRecentPlayRows(
+  database: DatabaseContext,
+  whereSql: string,
+  params: unknown[],
+  limit: number,
+  offset?: number,
+) {
+  const paginationSql = offset === undefined ? "LIMIT ?" : "LIMIT ?\n      OFFSET ?";
+  const paginationParams = offset === undefined ? [limit] : [limit, offset];
+
+  return database.client
     .prepare(
       `
       SELECT
@@ -894,25 +919,13 @@ async function getRecentPlays(database: DatabaseContext, whereSql: string, param
       JOIN albums ON albums.id = tracks.album_id
       ${whereSql}
       ORDER BY plays.played_at DESC, plays.id DESC
-      LIMIT ?
+      ${paginationSql}
       `,
     )
-    .all(...params, limit) as Array<{
-      play_id: number;
-      played_at: string;
-      context_type: string | null;
-      context_uri: string | null;
-      track_id: number;
-      track_spotify_id: string;
-      track_name: string;
-      track_duration_ms: number;
-      track_explicit: number;
-      album_id: number;
-      album_spotify_id: string;
-      album_name: string;
-      album_image_url: string | null;
-    }>;
+    .all(...params, ...paginationParams) as RecentPlayRow[];
+}
 
+async function mapRecentPlayItems(database: DatabaseContext, rows: RecentPlayRow[]) {
   const artistMap = await getTrackArtistMap(
     database,
     rows.map((row) => row.track_id),
@@ -938,6 +951,11 @@ async function getRecentPlays(database: DatabaseContext, whereSql: string, param
     },
     artists: artistMap.get(row.track_id) ?? [],
   })) satisfies RecentPlayItem[];
+}
+
+async function getRecentPlays(database: DatabaseContext, whereSql: string, params: unknown[], limit = 5) {
+  const rows = queryRecentPlayRows(database, whereSql, params, limit);
+  return mapRecentPlayItems(database, rows);
 }
 
 async function getRecentPlaysForArtist(database: DatabaseContext, artistId: number) {
@@ -1016,74 +1034,10 @@ async function getRecentPlaysPage(
     )
     .get(...params) as { total: number };
 
-  const rows = database.client
-    .prepare(
-      `
-      SELECT
-        plays.id AS play_id,
-        plays.played_at AS played_at,
-        plays.context_type AS context_type,
-        plays.context_uri AS context_uri,
-        tracks.id AS track_id,
-        tracks.spotify_id AS track_spotify_id,
-        tracks.name AS track_name,
-        tracks.duration_ms AS track_duration_ms,
-        tracks.explicit AS track_explicit,
-        albums.id AS album_id,
-        albums.spotify_id AS album_spotify_id,
-        albums.name AS album_name,
-        albums.image_url AS album_image_url
-      FROM plays
-      JOIN tracks ON tracks.id = plays.track_id
-      JOIN albums ON albums.id = tracks.album_id
-      ${whereSql}
-      ORDER BY plays.played_at DESC, plays.id DESC
-      LIMIT ?
-      OFFSET ?
-      `,
-    )
-    .all(...params, limit, offset) as Array<{
-      play_id: number;
-      played_at: string;
-      context_type: string | null;
-      context_uri: string | null;
-      track_id: number;
-      track_spotify_id: string;
-      track_name: string;
-      track_duration_ms: number;
-      track_explicit: number;
-      album_id: number;
-      album_spotify_id: string;
-      album_name: string;
-      album_image_url: string | null;
-    }>;
-
-  const artistMap = await getTrackArtistMap(
-    database,
-    rows.map((row) => row.track_id),
-  );
+  const rows = queryRecentPlayRows(database, whereSql, params, limit, offset);
 
   return {
-    items: rows.map((row) => ({
-      id: row.play_id,
-      playedAt: row.played_at,
-      contextType: row.context_type,
-      contextUri: row.context_uri,
-      track: {
-        id: row.track_spotify_id,
-        name: row.track_name,
-        durationMs: row.track_duration_ms,
-        explicit: Boolean(row.track_explicit),
-        routeId: row.track_spotify_id,
-      },
-      album: {
-        id: row.album_spotify_id,
-        name: row.album_name,
-        imageUrl: row.album_image_url,
-        routeId: row.album_spotify_id,
-      },
-      artists: artistMap.get(row.track_id) ?? [],
-    })),
+    items: await mapRecentPlayItems(database, rows),
     total: countRow.total,
     offset,
     limit,
