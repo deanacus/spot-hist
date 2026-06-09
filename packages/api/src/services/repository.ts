@@ -275,6 +275,50 @@ function upsertTrack(database: { db: any }, item: SpotifyRecentlyPlayedItem, alb
   return row;
 }
 
+type IdRow = { id: number };
+
+function requireIdRow(row: IdRow | undefined, message: string) {
+  if (!row) {
+    throw new Error(message);
+  }
+
+  return row.id;
+}
+
+function createArtistUpsertParams(
+  artist: SpotifyRecentlyPlayedItem["track"]["artists"][number],
+  timestamp: string,
+) {
+  return {
+    spotify_id: artist.id,
+    name: artist.name,
+    uri: artist.uri,
+    href: artist.href,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+}
+
+function upsertRelatedArtist(
+  artist: SpotifyRecentlyPlayedItem["track"]["artists"][number],
+  ownerId: number,
+  timestamp: string,
+  statements: {
+    upsertArtist: { run: (params: ReturnType<typeof createArtistUpsertParams>) => unknown };
+    selectArtist: { get: (spotifyId: string) => unknown };
+    linkArtist: { run: (ownerId: number, artistId: number) => unknown };
+  },
+) {
+  statements.upsertArtist.run(createArtistUpsertParams(artist, timestamp));
+
+  const artistId = requireIdRow(
+    statements.selectArtist.get(artist.id) as IdRow | undefined,
+    `Artist ${artist.id} missing after upsert`,
+  );
+
+  statements.linkArtist.run(ownerId, artistId);
+}
+
 function persistSpotifyPlayedItems(
   database: DatabaseContext,
   items: SpotifyRecentlyPlayedItem[],
@@ -377,25 +421,23 @@ function persistSpotifyPlayedItems(
         created_at: timestamp,
         updated_at: timestamp,
       });
-      const albumRow = selectAlbumStmt.get(album.id) as { id: number };
+      const albumId = requireIdRow(
+        selectAlbumStmt.get(album.id) as IdRow | undefined,
+        `Album ${album.id} missing after upsert`,
+      );
 
       for (const artist of item.track.album.artists) {
-        upsertArtistStmt.run({
-          spotify_id: artist.id,
-          name: artist.name,
-          uri: artist.uri,
-          href: artist.href,
-          created_at: timestamp,
-          updated_at: timestamp,
+        upsertRelatedArtist(artist, albumId, timestamp, {
+          upsertArtist: upsertArtistStmt,
+          selectArtist: selectArtistStmt,
+          linkArtist: insertAlbumArtistStmt,
         });
-        const artistRow = selectArtistStmt.get(artist.id) as { id: number };
-        insertAlbumArtistStmt.run(albumRow.id, artistRow.id);
       }
 
       upsertTrackStmt.run({
         spotify_id: item.track.id,
         name: item.track.name,
-        album_id: albumRow.id,
+        album_id: albumId,
         disc_number: item.track.disc_number,
         track_number: item.track.track_number,
         duration_ms: item.track.duration_ms,
@@ -407,23 +449,21 @@ function persistSpotifyPlayedItems(
         created_at: timestamp,
         updated_at: timestamp,
       });
-      const trackRow = selectTrackStmt.get(item.track.id) as { id: number };
+      const trackId = requireIdRow(
+        selectTrackStmt.get(item.track.id) as IdRow | undefined,
+        `Track ${item.track.id} missing after upsert`,
+      );
 
       for (const artist of item.track.artists) {
-        upsertArtistStmt.run({
-          spotify_id: artist.id,
-          name: artist.name,
-          uri: artist.uri,
-          href: artist.href,
-          created_at: timestamp,
-          updated_at: timestamp,
+        upsertRelatedArtist(artist, trackId, timestamp, {
+          upsertArtist: upsertArtistStmt,
+          selectArtist: selectArtistStmt,
+          linkArtist: insertTrackArtistStmt,
         });
-        const artistRow = selectArtistStmt.get(artist.id) as { id: number };
-        insertTrackArtistStmt.run(trackRow.id, artistRow.id);
       }
 
       const insertPlayResult = insertPlayStmt.run(
-        trackRow.id,
+        trackId,
         item.played_at,
         item.context?.type ?? null,
         item.context?.uri ?? null,
