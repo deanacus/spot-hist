@@ -27,6 +27,17 @@ const IMPORT_SUMMARY_FIELDS = [
   "resolvedTrackIds",
 ] as const;
 
+type ImportSummaryCount = {
+  key: (typeof IMPORT_SUMMARY_FIELDS)[number];
+  label: string;
+  value: number | string[];
+};
+
+type ImportJobNotice = {
+  tone: "error" | "success" | "neutral";
+  message: string;
+} | null;
+
 function isSupportedImportFile(file: File) {
   const fileName = file.name.toLowerCase();
 
@@ -62,7 +73,7 @@ function getImportSummaryCounts(job: SpotifyHistoryImportJob | null) {
   }));
 }
 
-function getImportJobNotice(job: SpotifyHistoryImportJob | null) {
+function getImportJobNotice(job: SpotifyHistoryImportJob | null): ImportJobNotice {
   if (!job) {
     return null;
   }
@@ -92,6 +103,55 @@ function getImportJobNotice(job: SpotifyHistoryImportJob | null) {
     tone: "neutral" as const,
     message: "Spotify history import is queued and will start shortly.",
   };
+}
+
+function getImportSelectionError(files: File[]) {
+  if (files.length === 0) {
+    return "Choose at least one Spotify history export file to import.";
+  }
+
+  if (!files.every(isSupportedImportFile)) {
+    return "Only Spotify history `.zip` or `.json` exports are supported.";
+  }
+
+  return null;
+}
+
+function getImportStateError(input: {
+  validationError: string | null;
+  mutationError: unknown;
+  trackedJobError: unknown;
+  latestJobError: unknown;
+}) {
+  if (input.validationError) {
+    return input.validationError;
+  }
+
+  if (input.mutationError) {
+    return getErrorMessage(input.mutationError, "Unable to start the Spotify history import job.");
+  }
+
+  if (input.trackedJobError) {
+    return getErrorMessage(input.trackedJobError, "Unable to refresh Spotify history import status.");
+  }
+
+  if (input.latestJobError) {
+    return getErrorMessage(input.latestJobError, "Unable to load Spotify history import status.");
+  }
+
+  return null;
+}
+
+function getImportButtonLabel(isPending: boolean, isBusy: boolean) {
+  if (isPending) {
+    return "Starting import...";
+  }
+
+  if (isBusy) {
+    return "Import running...";
+  }
+
+  return "Start import";
 }
 
 function SettingsSectionHeader({
@@ -161,43 +221,11 @@ function useSessionActionState() {
   };
 }
 
-function useImportState(enabled: boolean) {
-  const importMutation = useStartSpotifyHistoryImportMutation();
+function useImportFileSelection(
+  importMutation: ReturnType<typeof useStartSpotifyHistoryImportMutation>,
+) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [importValidationError, setImportValidationError] = useState<string | null>(null);
-  const trackedJobQuery = useTrackedSpotifyHistoryImportJobQuery(enabled, importMutation.data?.id ?? null);
-  const importJob = trackedJobQuery.job ?? importMutation.data ?? null;
-  const importSummaryCounts = getImportSummaryCounts(importJob);
-  const importJobNotice = getImportJobNotice(importJob);
-  const isImportBusy = importMutation.isPending || isActiveSpotifyHistoryImportJob(importJob);
-  const importButtonLabel = importMutation.isPending
-    ? "Starting import..."
-    : isImportBusy
-      ? "Import running..."
-      : "Start import";
-
-  async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (selectedFiles.length === 0) {
-      setImportValidationError("Choose at least one Spotify history export file to import.");
-      return;
-    }
-
-    if (!selectedFiles.every(isSupportedImportFile)) {
-      setImportValidationError("Only Spotify history `.zip` or `.json` exports are supported.");
-      return;
-    }
-
-    setImportValidationError(null);
-
-    try {
-      await importMutation.mutateAsync(selectedFiles);
-      setSelectedFiles([]);
-    } catch {
-      return;
-    }
-  }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -210,9 +238,10 @@ function useImportState(enabled: boolean) {
       return;
     }
 
-    if (!files.every(isSupportedImportFile)) {
+    const selectionError = getImportSelectionError(files);
+    if (selectionError) {
       setSelectedFiles([]);
-      setImportValidationError("Only Spotify history `.zip` or `.json` exports are supported.");
+      setImportValidationError(selectionError);
       event.target.value = "";
       return;
     }
@@ -221,26 +250,70 @@ function useImportState(enabled: boolean) {
     setImportValidationError(null);
   }
 
-  const importError = importValidationError
-    ? importValidationError
-    : importMutation.error
-      ? getErrorMessage(importMutation.error, "Unable to start the Spotify history import job.")
-      : trackedJobQuery.jobQuery.error
-        ? getErrorMessage(trackedJobQuery.jobQuery.error, "Unable to refresh Spotify history import status.")
-        : trackedJobQuery.latestJobQuery.error
-          ? getErrorMessage(trackedJobQuery.latestJobQuery.error, "Unable to load Spotify history import status.")
-          : null;
-
   return {
     selectedFiles,
-    importSummaryCounts,
-    importJobNotice,
-    importJob,
-    importError,
-    isImportBusy,
-    importButtonLabel,
-    handleImportSubmit,
+    importValidationError,
+    setImportValidationError,
+    setSelectedFiles,
     handleFileChange,
+  };
+}
+
+function useTrackedImportState(enabled: boolean, jobId: string | null) {
+  const trackedJobQuery = useTrackedSpotifyHistoryImportJobQuery(enabled, jobId);
+  const importJob = trackedJobQuery.job ?? null;
+
+  return {
+    importJob,
+    importJobNotice: getImportJobNotice(importJob),
+    importSummaryCounts: getImportSummaryCounts(importJob),
+    latestJobError: trackedJobQuery.latestJobQuery.error,
+    trackedJobError: trackedJobQuery.jobQuery.error,
+  };
+}
+
+function useImportState(enabled: boolean) {
+  const importMutation = useStartSpotifyHistoryImportMutation();
+  const fileSelection = useImportFileSelection(importMutation);
+  const trackedImportState = useTrackedImportState(enabled, importMutation.data?.id ?? null);
+  const importJob = trackedImportState.importJob ?? importMutation.data ?? null;
+  const isImportBusy = importMutation.isPending || isActiveSpotifyHistoryImportJob(importJob);
+
+  async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const selectionError = getImportSelectionError(fileSelection.selectedFiles);
+    if (selectionError) {
+      fileSelection.setImportValidationError(selectionError);
+      return;
+    }
+
+    fileSelection.setImportValidationError(null);
+
+    try {
+      await importMutation.mutateAsync(fileSelection.selectedFiles);
+      fileSelection.setImportValidationError(null);
+      fileSelection.setSelectedFiles([]);
+    } catch {
+      return;
+    }
+  }
+
+  return {
+    selectedFiles: fileSelection.selectedFiles,
+    importSummaryCounts: getImportSummaryCounts(importJob),
+    importJobNotice: getImportJobNotice(importJob),
+    importJob,
+    importError: getImportStateError({
+      validationError: fileSelection.importValidationError,
+      mutationError: importMutation.error,
+      trackedJobError: trackedImportState.trackedJobError,
+      latestJobError: trackedImportState.latestJobError,
+    }),
+    isImportBusy,
+    importButtonLabel: getImportButtonLabel(importMutation.isPending, isImportBusy),
+    handleImportSubmit,
+    handleFileChange: fileSelection.handleFileChange,
   };
 }
 
