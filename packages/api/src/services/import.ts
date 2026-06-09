@@ -55,6 +55,8 @@ interface CandidatePlay {
   trackId: string;
 }
 
+type ImportProgressReporter = (update: ImportProgressUpdate) => Promise<void> | void;
+
 export interface ImportProgressUpdate extends Partial<SpotifyHistoryImportSummary> {
   phase?: string | null;
 }
@@ -208,6 +210,22 @@ function buildRecentlyPlayedItem(track: SpotifyTrack, playedAt: string): Spotify
   };
 }
 
+function getSpotifyRetryMetadata(error: unknown) {
+  const status =
+    error && typeof error === "object" && "status" in error && typeof error.status === "number"
+      ? error.status
+      : null;
+  const retryAfterMs =
+    error && typeof error === "object" && "retryAfter" in error && typeof error.retryAfter === "string"
+      ? Number(error.retryAfter) * 1000
+      : null;
+
+  return {
+    status,
+    retryAfterMs,
+  };
+}
+
 function loadLocalTracksBySpotifyId(database: DatabaseContext, trackIds: string[]) {
   const trackMap = new Map<string, SpotifyTrack>();
 
@@ -338,14 +356,7 @@ async function fetchTrackBatchWithRetry(
       return await spotify.fetchTracks(accessToken, trackIds);
     } catch (error) {
       attempt += 1;
-      const status =
-        error && typeof error === "object" && "status" in error && typeof error.status === "number"
-          ? error.status
-          : null;
-      const retryAfterMs =
-        error && typeof error === "object" && "retryAfter" in error && typeof error.retryAfter === "string"
-          ? Number(error.retryAfter) * 1000
-          : null;
+      const { status, retryAfterMs } = getSpotifyRetryMetadata(error);
 
       if ((status === 429 || (status !== null && status >= 500)) && attempt < maxAttempts) {
         await sleep(retryAfterMs ?? attempt * 1000);
@@ -389,20 +400,19 @@ export function stageSpotifyImportFiles(
   };
 }
 
-export async function processSpotifyHistoryImport(
-  database: DatabaseContext,
-  spotify: SpotifyClient,
-  uploadPath: string,
-  onProgress?: (update: ImportProgressUpdate) => Promise<void> | void,
+async function reportResolveProgress(
+  summary: SpotifyHistoryImportSummary,
+  onProgress?: ImportProgressReporter,
 ) {
-  const parsedFiles = collectParsedFiles(uploadPath);
-  const summary = buildImportSummary(parsedFiles.length);
-  const candidateRows: CandidatePlay[] = [];
-
   await onProgress?.({
-    phase: "parsing",
-    filesProcessed: summary.filesProcessed,
+    phase: "resolving",
+    resolvedTrackIds: summary.resolvedTrackIds,
+    totalTrackIds: summary.totalTrackIds,
   });
+}
+
+function collectCandidateRows(parsedFiles: ParsedImportFile[], summary: SpotifyHistoryImportSummary) {
+  const candidateRows: CandidatePlay[] = [];
 
   for (const file of parsedFiles) {
     for (const rawRow of file.rows) {
@@ -431,6 +441,80 @@ export async function processSpotifyHistoryImport(
     }
   }
 
+  return candidateRows;
+}
+
+async function resolveTracksForImport(
+  database: DatabaseContext,
+  spotify: SpotifyClient,
+  uniqueTrackIds: string[],
+  summary: SpotifyHistoryImportSummary,
+  onProgress?: ImportProgressReporter,
+) {
+  const localTracks = loadLocalTracksBySpotifyId(database, uniqueTrackIds);
+  const trackById = new Map(localTracks);
+  summary.resolvedTrackIds = trackById.size;
+
+  await reportResolveProgress(summary, onProgress);
+
+  const missingTrackIds = uniqueTrackIds.filter((trackId) => !trackById.has(trackId));
+  if (missingTrackIds.length === 0) {
+    return trackById;
+  }
+
+  const tokenState = await getAccessToken(database, spotify);
+  if (!tokenState) {
+    throw new SpotifyHistoryImportError(409, "Connect a Spotify account before importing history.");
+  }
+
+  for (const batch of chunkArray(missingTrackIds, 50)) {
+    const catalogTracks = await fetchTrackBatchWithRetry(spotify, tokenState.accessToken, batch);
+    for (const track of catalogTracks) {
+      trackById.set(track.id, track);
+    }
+
+    summary.resolvedTrackIds = trackById.size;
+    await reportResolveProgress(summary, onProgress);
+  }
+
+  return trackById;
+}
+
+function buildItemsToPersist(
+  candidateRows: CandidatePlay[],
+  trackById: Map<string, SpotifyTrack>,
+  summary: SpotifyHistoryImportSummary,
+) {
+  const itemsToPersist: SpotifyRecentlyPlayedItem[] = [];
+
+  for (const candidate of candidateRows) {
+    const track = trackById.get(candidate.trackId);
+    if (!track) {
+      summary.invalidRowsSkipped += 1;
+      continue;
+    }
+
+    itemsToPersist.push(buildRecentlyPlayedItem(track, candidate.playedAt));
+  }
+
+  return itemsToPersist;
+}
+
+export async function processSpotifyHistoryImport(
+  database: DatabaseContext,
+  spotify: SpotifyClient,
+  uploadPath: string,
+  onProgress?: ImportProgressReporter,
+) {
+  const parsedFiles = collectParsedFiles(uploadPath);
+  const summary = buildImportSummary(parsedFiles.length);
+
+  await onProgress?.({
+    phase: "parsing",
+    filesProcessed: summary.filesProcessed,
+  });
+
+  const candidateRows = collectCandidateRows(parsedFiles, summary);
   const uniqueTrackIds = Array.from(new Set(candidateRows.map((row) => row.trackId)));
   summary.totalTrackIds = uniqueTrackIds.length;
 
@@ -443,49 +527,14 @@ export async function processSpotifyHistoryImport(
     totalTrackIds: summary.totalTrackIds,
   });
 
-  const localTracks = loadLocalTracksBySpotifyId(database, uniqueTrackIds);
-  const trackById = new Map(localTracks);
-  summary.resolvedTrackIds = trackById.size;
-
-  await onProgress?.({
-    phase: "resolving",
-    resolvedTrackIds: summary.resolvedTrackIds,
-    totalTrackIds: summary.totalTrackIds,
-  });
-
-  const missingTrackIds = uniqueTrackIds.filter((trackId) => !trackById.has(trackId));
-  if (missingTrackIds.length > 0) {
-    const tokenState = await getAccessToken(database, spotify);
-    if (!tokenState) {
-      throw new SpotifyHistoryImportError(409, "Connect a Spotify account before importing history.");
-    }
-
-    for (const batch of chunkArray(missingTrackIds, 50)) {
-      const catalogTracks = await fetchTrackBatchWithRetry(spotify, tokenState.accessToken, batch);
-      for (const track of catalogTracks) {
-        trackById.set(track.id, track);
-      }
-
-      summary.resolvedTrackIds = trackById.size;
-      await onProgress?.({
-        phase: "resolving",
-        resolvedTrackIds: summary.resolvedTrackIds,
-        totalTrackIds: summary.totalTrackIds,
-      });
-    }
-  }
-
-  const itemsToPersist: SpotifyRecentlyPlayedItem[] = [];
-
-  for (const candidate of candidateRows) {
-    const track = trackById.get(candidate.trackId);
-    if (!track) {
-      summary.invalidRowsSkipped += 1;
-      continue;
-    }
-
-    itemsToPersist.push(buildRecentlyPlayedItem(track, candidate.playedAt));
-  }
+  const trackById = await resolveTracksForImport(
+    database,
+    spotify,
+    uniqueTrackIds,
+    summary,
+    onProgress,
+  );
+  const itemsToPersist = buildItemsToPersist(candidateRows, trackById, summary);
 
   await onProgress?.({
     phase: "persisting",
