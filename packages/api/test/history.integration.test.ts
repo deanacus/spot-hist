@@ -1,115 +1,55 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildApp } from "../src/app.js";
-import { createSession } from "../src/auth/session.js";
-import { persistRecentlyPlayedItems } from "../src/services/repository.js";
-import type { SpotifyRecentlyPlayedItem } from "../src/types/spotify.js";
-import { cleanupConfig, createTestConfig } from "./helpers.js";
-
-function createArtist(id: string, name: string) {
-  return {
-    id,
-    name,
-    uri: `spotify:artist:${id}`,
-    href: `https://api.spotify.com/v1/artists/${id}`,
-  };
-}
-
-function createAlbum(id: string, name: string, artist: ReturnType<typeof createArtist>) {
-  return {
-    id,
-    name,
-    album_type: "album",
-    total_tracks: 10,
-    release_date: "2024-01-01",
-    release_date_precision: "day",
-    uri: `spotify:album:${id}`,
-    href: `https://api.spotify.com/v1/albums/${id}`,
-    images: [{ url: `https://image/${id}`, height: 640, width: 640 }],
-    artists: [artist],
-  };
-}
-
-function createPlay(input: {
-  playedAt: string;
-  trackId: string;
-  trackName: string;
-  album: ReturnType<typeof createAlbum>;
-  artist: ReturnType<typeof createArtist>;
-}) {
-  return {
-    played_at: input.playedAt,
-    context: {
-      type: "playlist",
-      uri: "spotify:playlist:test-list",
-    },
-    track: {
-      id: input.trackId,
-      name: input.trackName,
-      album: input.album,
-      artists: [input.artist],
-      disc_number: 1,
-      track_number: 1,
-      duration_ms: 180_000,
-      explicit: false,
-      external_ids: {
-        isrc: `${input.trackId.toUpperCase()}-ISRC`,
-      },
-      uri: `spotify:track:${input.trackId}`,
-      href: `https://api.spotify.com/v1/tracks/${input.trackId}`,
-      preview_url: null,
-    },
-  } satisfies SpotifyRecentlyPlayedItem;
-}
+import {
+  cleanupConfig,
+  createAlbum,
+  createArtist,
+  createAuthenticatedApp,
+  createPlay,
+  createTestConfig,
+  expectAuthenticatedRequestsToReturnStatus,
+} from "./helpers.js";
 
 async function createAuthenticatedAppWithHistory() {
-  const config = createTestConfig();
-  const app = await buildApp({
-    config,
-    skipPoller: true,
-  });
-
   const artist = createArtist("artist-1", "North Coast");
-  const album = createAlbum("album-1", "Signals", artist);
+  const album = createAlbum("album-1", "Signals", `https://image/album-1`, [artist]);
 
-  await persistRecentlyPlayedItems(app.locals.database, [
+  return createAuthenticatedApp({
+    seedItems: [
     createPlay({
       playedAt: "2024-01-01T00:00:00.000Z",
       trackId: "track-1",
       trackName: "First Light",
       album,
-      artist,
+      artists: [artist],
+      previewUrl: null,
     }),
     createPlay({
       playedAt: "2024-01-01T01:00:00.000Z",
       trackId: "track-2",
       trackName: "Midnight Run",
       album,
-      artist,
+      artists: [artist],
+      previewUrl: null,
     }),
     createPlay({
       playedAt: "2024-01-01T01:00:00.000Z",
       trackId: "track-2b",
       trackName: "Midnight Run II",
       album,
-      artist,
+      artists: [artist],
+      previewUrl: null,
     }),
     createPlay({
       playedAt: "2024-01-01T02:00:00.000Z",
       trackId: "track-3",
       trackName: "Dawn Echo",
       album,
-      artist,
+      artists: [artist],
+      previewUrl: null,
     }),
-  ]);
-
-  const session = await createSession(app.locals.database, config);
-
-  return {
-    app,
-    config,
-    sessionCookie: session.token,
-  };
+    ],
+  });
 }
 
 describe("history endpoint", () => {
@@ -191,17 +131,7 @@ describe("history endpoint", () => {
       "/api/history?offset=nope",
     ];
 
-    for (const url of invalidRequests) {
-      const response = await app.inject({
-        method: "GET",
-        url,
-        cookies: {
-          spot_hist_session: sessionCookie,
-        },
-      });
-
-      expect(response.statusCode, url).toBe(400);
-    }
+    await expectAuthenticatedRequestsToReturnStatus(app, sessionCookie, "GET", invalidRequests, 400);
 
     await app.close();
   });

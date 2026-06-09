@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { expect } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import { createSession } from "../src/auth/session.js";
@@ -31,6 +32,23 @@ export function cleanupConfig(config: AppConfig) {
 }
 
 export function createArtist(id: string, name: string) {
+  return {
+    id,
+    name,
+    uri: `spotify:artist:${id}`,
+    href: `https://api.spotify.com/v1/artists/${id}`,
+  };
+}
+
+export function createSpotifyImage(url: string) {
+  return {
+    url,
+    width: 640,
+    height: 640,
+  };
+}
+
+export function createSpotifyArtistPayload(id: string, name: string) {
   return {
     id,
     name,
@@ -106,6 +124,59 @@ export function createPlay(input: {
       preview_url: input.previewUrl ?? `https://preview/${input.trackId}.mp3`,
     },
   } satisfies SpotifyRecentlyPlayedItem;
+}
+
+export function createSpotifyArtistRelease(input: {
+  id: string;
+  name: string;
+  albumType: string;
+  albumGroup: string;
+  totalTracks: number;
+  releaseDate: string;
+  imageUrl: string;
+  artists: Array<ReturnType<typeof createSpotifyArtistPayload>>;
+  spotifyUrl: string;
+}) {
+  return {
+    id: input.id,
+    name: input.name,
+    album_type: input.albumType,
+    album_group: input.albumGroup,
+    total_tracks: input.totalTracks,
+    release_date: input.releaseDate,
+    release_date_precision: "day",
+    uri: `spotify:album:${input.id}`,
+    href: `https://api.spotify.com/v1/albums/${input.id}`,
+    images: [createSpotifyImage(input.imageUrl)],
+    artists: input.artists,
+    external_urls: {
+      spotify: input.spotifyUrl,
+    },
+  };
+}
+
+export function createSpotifyAlbumTrack(input: {
+  id: string;
+  name: string;
+  discNumber: number;
+  trackNumber: number;
+  durationMs: number;
+  explicit?: boolean;
+  previewUrl?: string | null;
+  artists: Array<ReturnType<typeof createSpotifyArtistPayload>>;
+}) {
+  return {
+    id: input.id,
+    name: input.name,
+    disc_number: input.discNumber,
+    track_number: input.trackNumber,
+    duration_ms: input.durationMs,
+    explicit: input.explicit ?? false,
+    preview_url: input.previewUrl ?? `https://preview/${input.id}.mp3`,
+    uri: `spotify:track:${input.id}`,
+    href: `https://api.spotify.com/v1/tracks/${input.id}`,
+    artists: input.artists,
+  };
 }
 
 export type TestSpotifyClient = SpotifyClient & {
@@ -210,6 +281,26 @@ export async function createAuthenticatedApp(options: {
     sessionCookie: session.token,
     spotify,
   };
+}
+
+export async function expectAuthenticatedRequestsToReturnStatus(
+  app: Awaited<ReturnType<typeof createAuthenticatedApp>>["app"],
+  sessionCookie: string,
+  method: "GET" | "DELETE",
+  urls: string[],
+  expectedStatus: number,
+) {
+  for (const url of urls) {
+    const response = await app.inject({
+      method,
+      url,
+      cookies: {
+        spot_hist_session: sessionCookie,
+      },
+    });
+
+    expect(response.statusCode, url).toBe(expectedStatus);
+  }
 }
 
 const detailTableByEntity = {

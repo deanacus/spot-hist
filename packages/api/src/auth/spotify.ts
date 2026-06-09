@@ -56,6 +56,10 @@ export function createSpotifyClient(config: AppConfig): SpotifyClient {
   }
 
   async function spotifyGetUrl<T>(accessToken: string, url: URL) {
+    return spotifyFetchJson<T>(accessToken, url, `Spotify API request failed with`);
+  }
+
+  async function spotifyFetchJson<T>(accessToken: string, url: URL, errorPrefix: string) {
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -64,7 +68,7 @@ export function createSpotifyClient(config: AppConfig): SpotifyClient {
 
     if (!response.ok) {
       const retryAfter = response.headers.get("Retry-After");
-      const error = new Error(`Spotify API request failed with ${response.status} for ${url.pathname}`);
+      const error = new Error(`${errorPrefix} ${response.status}${url.pathname ? ` for ${url.pathname}` : ""}`);
       (error as Error & { retryAfter?: string; status?: number }).retryAfter = retryAfter ?? undefined;
       (error as Error & { retryAfter?: string; status?: number }).status = response.status;
       throw error;
@@ -127,21 +131,11 @@ export function createSpotifyClient(config: AppConfig): SpotifyClient {
         url.searchParams.set("after", String(after));
       }
 
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const retryAfter = response.headers.get("Retry-After");
-        const error = new Error(`Spotify recently-played request failed with ${response.status}`);
-        (error as Error & { retryAfter?: string; status?: number }).retryAfter = retryAfter ?? undefined;
-        (error as Error & { retryAfter?: string; status?: number }).status = response.status;
-        throw error;
-      }
-
-      return (await response.json()) as SpotifyRecentlyPlayedResponse;
+      return spotifyFetchJson<SpotifyRecentlyPlayedResponse>(
+        accessToken,
+        url,
+        "Spotify recently-played request failed with",
+      );
     },
     async fetchArtist(accessToken, artistId) {
       return spotifyGet<SpotifyArtistDetail>(accessToken, `/artists/${artistId}`);

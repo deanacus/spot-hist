@@ -6,7 +6,12 @@ import {
   createArtist,
   createAuthenticatedApp,
   createPlay,
+  createSpotifyAlbumTrack,
+  createSpotifyArtistPayload,
+  createSpotifyArtistRelease,
+  createSpotifyImage,
   createSpotifyMock,
+  expectAuthenticatedRequestsToReturnStatus,
   getDetailRow,
   markDetailRowStale,
 } from "./helpers.js";
@@ -131,175 +136,80 @@ function createArtistCatalogPayload(version: string) {
       total: version === "v2" ? 456_789 : 123_456,
     },
     genres: version === "v2" ? ["neo-soul", "indie pop"] : ["art pop", "indie pop"],
-    images: [
-      {
-        url: `https://images/artist-alpha-${version}.jpg`,
-        width: 640,
-        height: 640,
-      },
-    ],
+    images: [createSpotifyImage(`https://images/artist-alpha-${version}.jpg`)],
   };
 }
 
 function createArtistAlbumsPayload(version: string) {
+  const alphaArtist = createSpotifyArtistPayload("artist-alpha", "Alpha Artist");
+  const betaArtist = createSpotifyArtistPayload("artist-beta", "Beta Artist");
+
+  const releases = [
+    {
+      id: `catalog-alpha-${version}`,
+      name: version === "v2" ? "Alpha Return" : "Alpha Debut",
+      albumType: "album",
+      albumGroup: "album",
+      totalTracks: 11,
+      releaseDate: version === "v2" ? "2025-02-01" : "2023-02-01",
+      imageUrl: `https://images/catalog-alpha-${version}.jpg`,
+      artists: [alphaArtist],
+    },
+    {
+      id: `catalog-single-${version}`,
+      name: "Alpha Signal",
+      albumType: "single",
+      albumGroup: "single",
+      totalTracks: 2,
+      releaseDate: version === "v2" ? "2025-03-01" : "2023-03-01",
+      imageUrl: `https://images/catalog-single-${version}.jpg`,
+      artists: [alphaArtist],
+    },
+    {
+      id: `catalog-compilation-${version}`,
+      name: "Alpha Archives",
+      albumType: "compilation",
+      albumGroup: "compilation",
+      totalTracks: 20,
+      releaseDate: version === "v2" ? "2025-04-01" : "2023-04-01",
+      imageUrl: `https://images/catalog-compilation-${version}.jpg`,
+      artists: [alphaArtist],
+    },
+    {
+      id: `catalog-appears-${version}`,
+      name: "Guest Signal",
+      albumType: "album",
+      albumGroup: "appears_on",
+      totalTracks: 12,
+      releaseDate: version === "v2" ? "2025-05-01" : "2023-05-01",
+      imageUrl: `https://images/catalog-appears-${version}.jpg`,
+      artists: [alphaArtist],
+    },
+    {
+      id: `catalog-guest-${version}`,
+      name: "Beta Featuring Alpha",
+      albumType: "single",
+      albumGroup: "single",
+      totalTracks: 1,
+      releaseDate: version === "v2" ? "2025-06-01" : "2023-06-01",
+      imageUrl: `https://images/catalog-guest-${version}.jpg`,
+      artists: [betaArtist, alphaArtist],
+    },
+  ];
+
   return {
-    items: [
-      {
-        id: `catalog-alpha-${version}`,
-        name: version === "v2" ? "Alpha Return" : "Alpha Debut",
-        album_type: "album",
-        album_group: "album",
-        total_tracks: 11,
-        release_date: version === "v2" ? "2025-02-01" : "2023-02-01",
-        release_date_precision: "day",
-        uri: `spotify:album:catalog-alpha-${version}`,
-        href: `https://api.spotify.com/v1/albums/catalog-alpha-${version}`,
-        images: [
-          {
-            url: `https://images/catalog-alpha-${version}.jpg`,
-            width: 640,
-            height: 640,
-          },
-        ],
-        artists: [
-          {
-            id: "artist-alpha",
-            name: "Alpha Artist",
-            uri: "spotify:artist:artist-alpha",
-            href: "https://api.spotify.com/v1/artists/artist-alpha",
-          },
-        ],
-        external_urls: {
-          spotify: `https://open.spotify.com/album/catalog-alpha-${version}`,
-        },
-      },
-      {
-        id: `catalog-single-${version}`,
-        name: version === "v2" ? "Alpha Signal" : "Alpha Signal",
-        album_type: "single",
-        album_group: "single",
-        total_tracks: 2,
-        release_date: version === "v2" ? "2025-03-01" : "2023-03-01",
-        release_date_precision: "day",
-        uri: `spotify:album:catalog-single-${version}`,
-        href: `https://api.spotify.com/v1/albums/catalog-single-${version}`,
-        images: [
-          {
-            url: `https://images/catalog-single-${version}.jpg`,
-            width: 640,
-            height: 640,
-          },
-        ],
-        artists: [
-          {
-            id: "artist-alpha",
-            name: "Alpha Artist",
-            uri: "spotify:artist:artist-alpha",
-            href: "https://api.spotify.com/v1/artists/artist-alpha",
-          },
-        ],
-        external_urls: {
-          spotify: `https://open.spotify.com/album/catalog-single-${version}`,
-        },
-      },
-      {
-        id: `catalog-compilation-${version}`,
-        name: version === "v2" ? "Alpha Archives" : "Alpha Archives",
-        album_type: "compilation",
-        album_group: "compilation",
-        total_tracks: 20,
-        release_date: version === "v2" ? "2025-04-01" : "2023-04-01",
-        release_date_precision: "day",
-        uri: `spotify:album:catalog-compilation-${version}`,
-        href: `https://api.spotify.com/v1/albums/catalog-compilation-${version}`,
-        images: [
-          {
-            url: `https://images/catalog-compilation-${version}.jpg`,
-            width: 640,
-            height: 640,
-          },
-        ],
-        artists: [
-          {
-            id: "artist-alpha",
-            name: "Alpha Artist",
-            uri: "spotify:artist:artist-alpha",
-            href: "https://api.spotify.com/v1/artists/artist-alpha",
-          },
-        ],
-        external_urls: {
-          spotify: `https://open.spotify.com/album/catalog-compilation-${version}`,
-        },
-      },
-      {
-        id: `catalog-appears-${version}`,
-        name: version === "v2" ? "Guest Signal" : "Guest Signal",
-        album_type: "album",
-        album_group: "appears_on",
-        total_tracks: 12,
-        release_date: version === "v2" ? "2025-05-01" : "2023-05-01",
-        release_date_precision: "day",
-        uri: `spotify:album:catalog-appears-${version}`,
-        href: `https://api.spotify.com/v1/albums/catalog-appears-${version}`,
-        images: [
-          {
-            url: `https://images/catalog-appears-${version}.jpg`,
-            width: 640,
-            height: 640,
-          },
-        ],
-        artists: [
-          {
-            id: "artist-alpha",
-            name: "Alpha Artist",
-            uri: "spotify:artist:artist-alpha",
-            href: "https://api.spotify.com/v1/artists/artist-alpha",
-          },
-        ],
-        external_urls: {
-          spotify: `https://open.spotify.com/album/catalog-appears-${version}`,
-        },
-      },
-      {
-        id: `catalog-guest-${version}`,
-        name: version === "v2" ? "Beta Featuring Alpha" : "Beta Featuring Alpha",
-        album_type: "single",
-        album_group: "single",
-        total_tracks: 1,
-        release_date: version === "v2" ? "2025-06-01" : "2023-06-01",
-        release_date_precision: "day",
-        uri: `spotify:album:catalog-guest-${version}`,
-        href: `https://api.spotify.com/v1/albums/catalog-guest-${version}`,
-        images: [
-          {
-            url: `https://images/catalog-guest-${version}.jpg`,
-            width: 640,
-            height: 640,
-          },
-        ],
-        artists: [
-          {
-            id: "artist-beta",
-            name: "Beta Artist",
-            uri: "spotify:artist:artist-beta",
-            href: "https://api.spotify.com/v1/artists/artist-beta",
-          },
-          {
-            id: "artist-alpha",
-            name: "Alpha Artist",
-            uri: "spotify:artist:artist-alpha",
-            href: "https://api.spotify.com/v1/artists/artist-alpha",
-          },
-        ],
-        external_urls: {
-          spotify: `https://open.spotify.com/album/catalog-guest-${version}`,
-        },
-      },
-    ],
+    items: releases.map((release) =>
+      createSpotifyArtistRelease({
+        ...release,
+        spotifyUrl: `https://open.spotify.com/album/${release.id}`,
+      }),
+    ),
   };
 }
 
 function createAlbumCatalogPayload(version: string) {
+  const alphaArtist = createSpotifyArtistPayload("artist-alpha", "Alpha Artist");
+
   return {
     id: "album-alpha",
     name: "Alpha Album",
@@ -309,13 +219,7 @@ function createAlbumCatalogPayload(version: string) {
     label: version === "v2" ? "Second Sight Records" : "First Light Records",
     popularity: version === "v2" ? 88 : 72,
     genres: version === "v2" ? ["alt-pop"] : ["indie rock"],
-    images: [
-      {
-        url: `https://images/album-alpha-${version}.jpg`,
-        width: 640,
-        height: 640,
-      },
-    ],
+    images: [createSpotifyImage(`https://images/album-alpha-${version}.jpg`)],
     copyrights: [
       {
         text: version === "v2" ? "2025 Second Sight Records" : "2024 First Light Records",
@@ -324,63 +228,33 @@ function createAlbumCatalogPayload(version: string) {
     ],
     tracks: {
       items: [
-        {
+        createSpotifyAlbumTrack({
           id: "track-alpha-hit",
           name: "Alpha Hit",
-          disc_number: 1,
-          track_number: 1,
-          duration_ms: 180_000,
-          explicit: false,
-          preview_url: "https://preview/track-alpha-hit.mp3",
-          uri: "spotify:track:track-alpha-hit",
-          href: "https://api.spotify.com/v1/tracks/track-alpha-hit",
-          artists: [
-            {
-              id: "artist-alpha",
-              name: "Alpha Artist",
-              uri: "spotify:artist:artist-alpha",
-              href: "https://api.spotify.com/v1/artists/artist-alpha",
-            },
-          ],
-        },
-        {
+          discNumber: 1,
+          trackNumber: 1,
+          durationMs: 180_000,
+          previewUrl: "https://preview/track-alpha-hit.mp3",
+          artists: [alphaArtist],
+        }),
+        createSpotifyAlbumTrack({
           id: "track-alpha-deep-cut",
           name: "Deep Cut",
-          disc_number: 1,
-          track_number: 2,
-          duration_ms: 200_000,
-          explicit: false,
-          preview_url: "https://preview/track-alpha-deep-cut.mp3",
-          uri: "spotify:track:track-alpha-deep-cut",
-          href: "https://api.spotify.com/v1/tracks/track-alpha-deep-cut",
-          artists: [
-            {
-              id: "artist-alpha",
-              name: "Alpha Artist",
-              uri: "spotify:artist:artist-alpha",
-              href: "https://api.spotify.com/v1/artists/artist-alpha",
-            },
-          ],
-        },
-        {
+          discNumber: 1,
+          trackNumber: 2,
+          durationMs: 200_000,
+          previewUrl: "https://preview/track-alpha-deep-cut.mp3",
+          artists: [alphaArtist],
+        }),
+        createSpotifyAlbumTrack({
           id: `track-alpha-unplayed-${version}`,
           name: version === "v2" ? "Encore" : "Finale",
-          disc_number: 1,
-          track_number: 3,
-          duration_ms: 210_000,
-          explicit: false,
-          preview_url: null,
-          uri: `spotify:track:track-alpha-unplayed-${version}`,
-          href: `https://api.spotify.com/v1/tracks/track-alpha-unplayed-${version}`,
-          artists: [
-            {
-              id: "artist-alpha",
-              name: "Alpha Artist",
-              uri: "spotify:artist:artist-alpha",
-              href: "https://api.spotify.com/v1/artists/artist-alpha",
-            },
-          ],
-        },
+          discNumber: 1,
+          trackNumber: 3,
+          durationMs: 210_000,
+          previewUrl: null,
+          artists: [alphaArtist],
+        }),
       ],
     },
   };
@@ -817,17 +691,7 @@ describe("detail page endpoints", () => {
       `/api/tracks/${seed.ids.track}/recent-plays?offset=2.5`,
     ];
 
-    for (const url of requests) {
-      const response = await app.inject({
-        method: "GET",
-        url,
-        cookies: {
-          spot_hist_session: sessionCookie,
-        },
-      });
-
-      expect(response.statusCode, url).toBe(400);
-    }
+    await expectAuthenticatedRequestsToReturnStatus(app, sessionCookie, "GET", requests, 400);
 
     await app.close();
   });
