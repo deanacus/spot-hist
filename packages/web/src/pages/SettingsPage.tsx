@@ -1,7 +1,7 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useState } from "react";
 
-import { ApiError, type SpotifyHistoryImportJob } from "../lib/api";
+import { ApiError, type AppStatus, type SpotifyHistoryImportJob } from "../lib/api";
 import { Shell, Button, InlineNotice } from "../components/Ui";
 import { getErrorMessage } from "../lib/errors";
 import {
@@ -94,25 +94,30 @@ function getImportJobNotice(job: SpotifyHistoryImportJob | null) {
   };
 }
 
-export function SettingsPage() {
-  const bootstrapQuery = useBootstrapQuery();
+function SettingsSectionHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div>
+      <h2 className="text-lg font-bold">{title}</h2>
+      <p className="text-sm text-(--text-secondary)">{description}</p>
+    </div>
+  );
+}
+
+function useSessionActionState() {
   const logoutMutation = useLogoutMutation();
   const disconnectMutation = useDisconnectAccountMutation();
-  const importMutation = useStartSpotifyHistoryImportMutation();
   const [busyAction, setBusyAction] = useState<"logout" | "disconnect" | null>(null);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [importValidationError, setImportValidationError] = useState<string | null>(null);
-  const status = bootstrapQuery.data?.appStatus ?? null;
-  const trackedJobQuery = useTrackedSpotifyHistoryImportJobQuery(Boolean(status), importMutation.data?.id ?? null);
-  const importJob = trackedJobQuery.job ?? importMutation.data ?? null;
-  const importSummaryCounts = getImportSummaryCounts(importJob);
-  const importJobNotice = getImportJobNotice(importJob);
-  const isImportBusy = importMutation.isPending || isActiveSpotifyHistoryImportJob(importJob);
-  const importButtonLabel = importMutation.isPending
-    ? "Starting import..."
-    : isImportBusy
-      ? "Import running..."
-      : "Start import";
+
+  const sessionError =
+    logoutMutation.error || disconnectMutation.error
+      ? getErrorMessage(logoutMutation.error ?? disconnectMutation.error, "Unable to update session state.")
+      : null;
 
   async function handleLogout() {
     setBusyAction("logout");
@@ -147,6 +152,29 @@ export function SettingsPage() {
       setBusyAction(null);
     }
   }
+
+  return {
+    busyAction,
+    sessionError,
+    handleLogout,
+    handleDisconnect,
+  };
+}
+
+function useImportState(enabled: boolean) {
+  const importMutation = useStartSpotifyHistoryImportMutation();
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [importValidationError, setImportValidationError] = useState<string | null>(null);
+  const trackedJobQuery = useTrackedSpotifyHistoryImportJobQuery(enabled, importMutation.data?.id ?? null);
+  const importJob = trackedJobQuery.job ?? importMutation.data ?? null;
+  const importSummaryCounts = getImportSummaryCounts(importJob);
+  const importJobNotice = getImportJobNotice(importJob);
+  const isImportBusy = importMutation.isPending || isActiveSpotifyHistoryImportJob(importJob);
+  const importButtonLabel = importMutation.isPending
+    ? "Starting import..."
+    : isImportBusy
+      ? "Import running..."
+      : "Start import";
 
   async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -193,10 +221,6 @@ export function SettingsPage() {
     setImportValidationError(null);
   }
 
-  const sessionError =
-    logoutMutation.error || disconnectMutation.error
-      ? getErrorMessage(logoutMutation.error ?? disconnectMutation.error, "Unable to update session state.")
-      : null;
   const importError = importValidationError
     ? importValidationError
     : importMutation.error
@@ -207,191 +231,282 @@ export function SettingsPage() {
           ? getErrorMessage(trackedJobQuery.latestJobQuery.error, "Unable to load Spotify history import status.")
           : null;
 
+  return {
+    selectedFiles,
+    importSummaryCounts,
+    importJobNotice,
+    importJob,
+    importError,
+    isImportBusy,
+    importButtonLabel,
+    handleImportSubmit,
+    handleFileChange,
+  };
+}
+
+function ConnectedAccountSection({ account }: { account: AppStatus["account"] }) {
+  return (
+    <section className="space-y-4">
+      <SettingsSectionHeader
+        title="Connected account"
+        description={
+          account
+            ? "This account is the source for polling and all local analytics."
+            : "No Spotify account connected. Reconnect to resume polling."
+        }
+      />
+
+      {account ? (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Display name</p>
+            <p className="mt-1 text-sm font-medium">{account.displayName}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Spotify ID</p>
+            <p className="mt-1 text-sm font-medium">{account.spotifyId}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Email</p>
+            <p className="mt-1 text-sm font-medium">{account.email ?? "Not provided"}</p>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SystemStateSection({ poller }: { poller: AppStatus["poller"] | null | undefined }) {
+  return (
+    <section className="space-y-4 border-t border-(--border-subtle) pt-6">
+      <SettingsSectionHeader title="System state" description="Current polling status for the tracker." />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Poller</p>
+          <p className="mt-1 text-sm font-medium">{poller?.state ?? "idle"}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Last poll</p>
+          <p className="mt-1 text-sm font-medium">
+            {poller?.lastPollAt ? new Date(poller.lastPollAt).toLocaleString() : "Never"}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Last result</p>
+          <p className="mt-1 text-sm text-(--text-secondary)">{poller?.lastPollResult ?? "No result recorded"}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ImportJobCard({
+  job,
+  notice,
+  summaryCounts,
+}: {
+  job: SpotifyHistoryImportJob;
+  notice: ReturnType<typeof getImportJobNotice>;
+  summaryCounts: ReturnType<typeof getImportSummaryCounts>;
+}) {
+  return (
+    <div className="space-y-4 rounded bg-(--bg-elevated) p-4">
+      <div className="space-y-2">
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-(--text-subdued)">Latest import job</h3>
+          <p className="mt-1 text-sm text-(--text-secondary)">
+            Background job status and counters for the most recent Spotify history import.
+          </p>
+        </div>
+
+        {notice ? <InlineNotice tone={notice.tone}>{notice.message}</InlineNotice> : null}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Status</p>
+            <p className="mt-1 text-sm font-medium">{formatSummaryLabel(job.status)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Phase</p>
+            <p className="mt-1 text-sm font-medium">{formatOptionalSummaryLabel(job.phase)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Created</p>
+            <p className="mt-1 text-sm font-medium">{formatTimestamp(job.createdAt)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Updated</p>
+            <p className="mt-1 text-sm font-medium">{formatTimestamp(job.updatedAt)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Started</p>
+            <p className="mt-1 text-sm font-medium">{formatTimestamp(job.startedAt)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Completed</p>
+            <p className="mt-1 text-sm font-medium">{formatTimestamp(job.completedAt)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Source</p>
+            <p className="mt-1 text-sm font-medium">{job.source}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Job ID</p>
+            <p className="mt-1 text-sm font-medium">{job.id}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {summaryCounts.map((entry) => (
+          <div key={entry.key}>
+            <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">{entry.label}</p>
+            <p className="mt-1 text-lg font-bold">{entry.value.toLocaleString()}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ImportHistorySection({
+  selectedFiles,
+  importError,
+  isImportBusy,
+  importButtonLabel,
+  importJob,
+  importJobNotice,
+  importSummaryCounts,
+  onSubmit,
+  onFileChange,
+}: {
+  selectedFiles: File[];
+  importError: string | null;
+  isImportBusy: boolean;
+  importButtonLabel: string;
+  importJob: SpotifyHistoryImportJob | null;
+  importJobNotice: ReturnType<typeof getImportJobNotice>;
+  importSummaryCounts: ReturnType<typeof getImportSummaryCounts>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const selectedFileNames =
+    selectedFiles.length > 0
+      ? `Selected files: ${selectedFiles.map((file) => file.name).join(", ")}`
+      : "No files selected.";
+
+  return (
+    <section className="space-y-4 border-t border-(--border-subtle) pt-6">
+      <SettingsSectionHeader
+        title="Import Spotify history"
+        description="Upload a Spotify Extended Streaming History export as a `.zip` or `.json` file. Imports run in the background and will appear here while they are processing."
+      />
+
+      <form className="space-y-4" onSubmit={(event) => void onSubmit(event)}>
+        <label className="block space-y-2">
+          <span className="block text-sm font-medium text-(--text-primary)">Export files</span>
+          <input
+            key={selectedFiles.map((file) => file.name).join("|") || "empty"}
+            accept=".zip,.json,application/zip,application/json"
+            className="block w-full rounded border border-(--border-subtle) bg-(--bg-tinted) px-4 py-3 text-sm text-(--text-primary) file:mr-4 file:rounded-full file:border-0 file:bg-(--accent) file:px-4 file:py-2 file:text-sm file:font-semibold file:text-black hover:file:bg-(--accent-highlight)"
+            disabled={isImportBusy}
+            multiple
+            onChange={onFileChange}
+            type="file"
+          />
+        </label>
+
+        <div className="space-y-1 text-sm text-(--text-subdued)">
+          <p>
+            {isImportBusy
+              ? "A Spotify history import job is already queued or running."
+              : "Accepted formats: one Spotify `.zip` export bundle or one or more `.json` history files."}
+          </p>
+          <p>{selectedFileNames}</p>
+        </div>
+
+        {importError ? <InlineNotice tone="error">{importError}</InlineNotice> : null}
+
+        <div className="flex flex-wrap gap-3">
+          <Button disabled={selectedFiles.length === 0 || isImportBusy} type="submit">
+            {importButtonLabel}
+          </Button>
+        </div>
+      </form>
+
+      {importJob ? (
+        <ImportJobCard job={importJob} notice={importJobNotice} summaryCounts={importSummaryCounts} />
+      ) : null}
+    </section>
+  );
+}
+
+function SessionSection({
+  sessionError,
+  busyAction,
+  onLogout,
+  onDisconnect,
+}: {
+  sessionError: string | null;
+  busyAction: "logout" | "disconnect" | null;
+  onLogout: () => Promise<void>;
+  onDisconnect: () => Promise<void>;
+}) {
+  return (
+    <section className="space-y-4 border-t border-(--border-subtle) pt-6">
+      <SettingsSectionHeader
+        title="Session"
+        description="End your session or disconnect Spotify entirely."
+      />
+
+      {sessionError ? <InlineNotice tone="error">{sessionError}</InlineNotice> : null}
+
+      <div className="flex flex-wrap gap-3">
+        <Button kind="secondary" disabled={busyAction !== null} onClick={() => void onLogout()}>
+          {busyAction === "logout" ? "Logging out..." : "Logout"}
+        </Button>
+        <Button kind="danger" disabled={busyAction !== null} onClick={() => void onDisconnect()}>
+          {busyAction === "disconnect" ? "Disconnecting..." : "Disconnect Spotify"}
+        </Button>
+      </div>
+
+      <div className="space-y-2 text-sm text-(--text-subdued)">
+        <p>Disconnecting stops future polling until Spotify is reconnected.</p>
+        <p>Your local password remains in place.</p>
+        <p>Previously collected listening history remains in the database.</p>
+      </div>
+    </section>
+  );
+}
+
+export function SettingsPage() {
+  const bootstrapQuery = useBootstrapQuery();
+  const status = bootstrapQuery.data?.appStatus ?? null;
+  const sessionState = useSessionActionState();
+  const importState = useImportState(Boolean(status));
+
   return (
     <Shell title="Settings" subtitle="Manage your tracker">
       <div className="max-w-3xl space-y-8">
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-lg font-bold">Connected account</h2>
-            <p className="text-sm text-(--text-secondary)">
-              {status?.account
-                ? "This account is the source for polling and all local analytics."
-                : "No Spotify account connected. Reconnect to resume polling."}
-            </p>
-          </div>
-
-          {status?.account ? (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Display name</p>
-                <p className="mt-1 text-sm font-medium">{status.account.displayName}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Spotify ID</p>
-                <p className="mt-1 text-sm font-medium">{status.account.spotifyId}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Email</p>
-                <p className="mt-1 text-sm font-medium">{status.account.email ?? "Not provided"}</p>
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="space-y-4 border-t border-(--border-subtle) pt-6">
-          <h2 className="text-lg font-bold">System state</h2>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Poller</p>
-              <p className="mt-1 text-sm font-medium">{status?.poller.state ?? "idle"}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Last poll</p>
-              <p className="mt-1 text-sm font-medium">
-                {status?.poller.lastPollAt ? new Date(status.poller.lastPollAt).toLocaleString() : "Never"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Last result</p>
-              <p className="mt-1 text-sm text-(--text-secondary)">
-                {status?.poller.lastPollResult ?? "No result recorded"}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4 border-t border-(--border-subtle) pt-6">
-          <div>
-            <h2 className="text-lg font-bold">Import Spotify history</h2>
-            <p className="text-sm text-(--text-secondary)">
-              Upload a Spotify Extended Streaming History export as a `.zip` or `.json` file. Imports run in the
-              background and will appear here while they are processing.
-            </p>
-          </div>
-
-          <form className="space-y-4" onSubmit={(event) => void handleImportSubmit(event)}>
-            <label className="block space-y-2">
-              <span className="block text-sm font-medium text-(--text-primary)">Export files</span>
-              <input
-                key={selectedFiles.map((file) => file.name).join("|") || "empty"}
-                accept=".zip,.json,application/zip,application/json"
-                className="block w-full rounded border border-(--border-subtle) bg-(--bg-tinted) px-4 py-3 text-sm text-(--text-primary) file:mr-4 file:rounded-full file:border-0 file:bg-(--accent) file:px-4 file:py-2 file:text-sm file:font-semibold file:text-black hover:file:bg-(--accent-highlight)"
-                disabled={isImportBusy}
-                multiple
-                onChange={handleFileChange}
-                type="file"
-              />
-            </label>
-
-            <div className="space-y-1 text-sm text-(--text-subdued)">
-              <p>
-                {isImportBusy
-                  ? "A Spotify history import job is already queued or running."
-                  : "Accepted formats: one Spotify `.zip` export bundle or one or more `.json` history files."}
-              </p>
-              <p>
-                {selectedFiles.length > 0
-                  ? `Selected files: ${selectedFiles.map((file) => file.name).join(", ")}`
-                  : "No files selected."}
-              </p>
-            </div>
-
-            {importError ? <InlineNotice tone="error">{importError}</InlineNotice> : null}
-
-            <div className="flex flex-wrap gap-3">
-              <Button disabled={selectedFiles.length === 0 || isImportBusy} type="submit">
-                {importButtonLabel}
-              </Button>
-            </div>
-          </form>
-
-          {importJob ? (
-            <div className="space-y-4 rounded bg-(--bg-elevated) p-4">
-              <div className="space-y-2">
-                <div>
-                  <h3 className="text-sm font-bold uppercase tracking-wide text-(--text-subdued)">Latest import job</h3>
-                  <p className="mt-1 text-sm text-(--text-secondary)">
-                    Background job status and counters for the most recent Spotify history import.
-                  </p>
-                </div>
-
-                {importJobNotice ? <InlineNotice tone={importJobNotice.tone}>{importJobNotice.message}</InlineNotice> : null}
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Status</p>
-                    <p className="mt-1 text-sm font-medium">{formatSummaryLabel(importJob.status)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Phase</p>
-                    <p className="mt-1 text-sm font-medium">{formatOptionalSummaryLabel(importJob.phase)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Created</p>
-                    <p className="mt-1 text-sm font-medium">{formatTimestamp(importJob.createdAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Updated</p>
-                    <p className="mt-1 text-sm font-medium">{formatTimestamp(importJob.updatedAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Started</p>
-                    <p className="mt-1 text-sm font-medium">{formatTimestamp(importJob.startedAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Completed</p>
-                    <p className="mt-1 text-sm font-medium">{formatTimestamp(importJob.completedAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Source</p>
-                    <p className="mt-1 text-sm font-medium">{importJob.source}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">Job ID</p>
-                    <p className="mt-1 text-sm font-medium">{importJob.id}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                {importSummaryCounts.map((entry) => (
-                  <div key={entry.key}>
-                    <p className="text-xs font-medium uppercase tracking-wide text-(--text-subdued)">
-                      {entry.label}
-                    </p>
-                    <p className="mt-1 text-lg font-bold">{entry.value.toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="space-y-4 border-t border-(--border-subtle) pt-6">
-          <div>
-            <h2 className="text-lg font-bold">Session</h2>
-            <p className="text-sm text-(--text-secondary)">
-              End your session or disconnect Spotify entirely.
-            </p>
-          </div>
-
-          {sessionError ? <InlineNotice tone="error">{sessionError}</InlineNotice> : null}
-
-          <div className="flex flex-wrap gap-3">
-            <Button kind="secondary" disabled={busyAction !== null} onClick={() => void handleLogout()}>
-              {busyAction === "logout" ? "Logging out..." : "Logout"}
-            </Button>
-            <Button kind="danger" disabled={busyAction !== null} onClick={() => void handleDisconnect()}>
-              {busyAction === "disconnect" ? "Disconnecting..." : "Disconnect Spotify"}
-            </Button>
-          </div>
-
-          <div className="space-y-2 text-sm text-(--text-subdued)">
-            <p>Disconnecting stops future polling until Spotify is reconnected.</p>
-            <p>Your local password remains in place.</p>
-            <p>Previously collected listening history remains in the database.</p>
-          </div>
-        </section>
+        <ConnectedAccountSection account={status?.account ?? null} />
+        <SystemStateSection poller={status?.poller} />
+        <ImportHistorySection
+          selectedFiles={importState.selectedFiles}
+          importError={importState.importError}
+          isImportBusy={importState.isImportBusy}
+          importButtonLabel={importState.importButtonLabel}
+          importJob={importState.importJob}
+          importJobNotice={importState.importJobNotice}
+          importSummaryCounts={importState.importSummaryCounts}
+          onSubmit={importState.handleImportSubmit}
+          onFileChange={importState.handleFileChange}
+        />
+        <SessionSection
+          sessionError={sessionState.sessionError}
+          busyAction={sessionState.busyAction}
+          onLogout={sessionState.handleLogout}
+          onDisconnect={sessionState.handleDisconnect}
+        />
       </div>
     </Shell>
   );
