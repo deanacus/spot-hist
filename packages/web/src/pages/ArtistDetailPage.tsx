@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
+  DetailPageIntro,
+  DetailPageState,
   DismissibleWarning,
   RecentPlaysSection,
   SectionHeader,
@@ -10,11 +10,11 @@ import {
   formatPlayCount,
 } from '../components/DetailUi';
 import { AlbumArt, ArtistArtwork, SpotifyLink } from '../components/Media';
-import { Shell, EmptyState, InlineNotice } from '../components/Ui';
+import { Shell } from '../components/Ui';
+import { useDetailRefresh } from '../lib/detail-page';
 import { getErrorMessage } from '../lib/errors';
 import {
   isUnauthorizedError,
-  queryKeys,
   useArtistDetailQuery,
   useArtistRecentPlaysQuery,
   useBootstrapQuery,
@@ -67,7 +67,6 @@ function buildDiscographyItems(
 
 export function ArtistDetailPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
   const account = status?.account ?? null;
@@ -79,44 +78,17 @@ export function ArtistDetailPage() {
     mutate: refreshDetail,
     reset: resetRefresh,
   } = useRefreshArtistDetailMutation(id);
-  const attemptedRefreshKeyRef = useRef<string | null>(null);
-  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
-
   const recentPlays = recentPlaysQuery.data?.items ?? [];
-
-  useEffect(() => {
-    attemptedRefreshKeyRef.current = null;
-    setRefreshWarning(null);
-    resetRefresh();
-  }, [id, resetRefresh]);
-
-  useEffect(() => {
-    if (isUnauthorizedError(detailQuery.error) || isUnauthorizedError(refreshError)) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap });
-    }
-  }, [detailQuery.error, queryClient, refreshError]);
-
-  useEffect(() => {
-    const detail = detailQuery.data;
-
-    if (!id || !detail || detail.detailStatus === 'fresh' || isRefreshing) {
-      return;
-    }
-
-    const refreshKey = `${id}:${detail.detailStatus}`;
-
-    if (attemptedRefreshKeyRef.current === refreshKey) {
-      return;
-    }
-
-    attemptedRefreshKeyRef.current = refreshKey;
-    setRefreshWarning(null);
-    refreshDetail(undefined, {
-      onError: (error) => {
-        setRefreshWarning(getErrorMessage(error, 'Unable to refresh artist detail right now.'));
-      },
-    });
-  }, [detailQuery.data, id, isRefreshing, refreshDetail]);
+  const { refreshWarning, dismissRefreshWarning } = useDetailRefresh({
+    id,
+    detail: detailQuery.data,
+    detailError: detailQuery.error,
+    refreshError,
+    isRefreshing,
+    resetRefresh,
+    refreshErrorMessage: 'Unable to refresh artist detail right now.',
+    refresh: ({ onError }) => refreshDetail(undefined, { onError }),
+  });
 
   const detail = detailQuery.data;
   const error =
@@ -195,36 +167,25 @@ export function ArtistDetailPage() {
 
   return (
     <Shell>
-      {!account ? (
-        <EmptyState
-          title="Spotify is disconnected"
-          body="Reconnect in settings before viewing artist detail."
-        />
-      ) : !id ? (
-        <InlineNotice tone="error">Artist id is missing from the route.</InlineNotice>
-      ) : detailQuery.isPending && !detail ? (
-        <p className="py-8 text-sm text-(--text-subdued) animate-pulse">Loading artist detail...</p>
-      ) : error && !detail ? (
-        <InlineNotice tone="error">{error}</InlineNotice>
-      ) : detail ? (
+      <DetailPageState
+        hasAccount={Boolean(account)}
+        hasRouteId={Boolean(id)}
+        disconnectedBody="Reconnect in settings before viewing artist detail."
+        missingIdMessage="Artist id is missing from the route."
+        isPending={detailQuery.isPending && !detail}
+        loadingLabel="Loading artist detail..."
+        error={!detail ? error : null}
+      >
+        {detail ? (
         <div className="space-y-6">
-          <Link
-            to={routes.artists}
-            className="inline-flex items-center gap-1.5 text-sm text-(--text-secondary) transition hover:text-(--text-primary)"
-          >
-            <span aria-hidden="true">←</span>
-            Back to artists
-          </Link>
-
-          {refreshWarning ? (
-            <DismissibleWarning
-              message={refreshWarning}
-              onDismiss={() => setRefreshWarning(null)}
-            />
-          ) : null}
-          {isRefreshing ? (
-            <InlineNotice>Refreshing metadata in the background...</InlineNotice>
-          ) : null}
+          <DetailPageIntro
+            backTo={routes.artists}
+            backLabel="Back to artists"
+            refreshWarning={refreshWarning}
+            onDismissRefreshWarning={dismissRefreshWarning}
+            isRefreshing={isRefreshing}
+            refreshingMessage="Refreshing metadata in the background..."
+          />
 
           {/* Hero */}
           <div className="flex items-end gap-6">
@@ -322,7 +283,8 @@ export function ArtistDetailPage() {
           {renderDiscographySection('Albums', albums)}
           {renderDiscographySection('Singles', singles)}
         </div>
-      ) : null}
+        ) : null}
+      </DetailPageState>
     </Shell>
   );
 }

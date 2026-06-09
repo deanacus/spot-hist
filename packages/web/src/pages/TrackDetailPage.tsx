@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
   ArtistsInline,
-  DismissibleWarning,
+  DetailPageIntro,
+  DetailPageState,
   RecentPlaysSection,
   SectionHeader,
   StatRow,
@@ -12,11 +11,11 @@ import {
   formatPlayCount,
 } from "../components/DetailUi";
 import { AlbumArt, SpotifyLink } from "../components/Media";
-import { Shell, EmptyState, InlineNotice } from "../components/Ui";
+import { Shell } from "../components/Ui";
+import { useDetailRefresh } from "../lib/detail-page";
 import { getErrorMessage } from "../lib/errors";
 import {
   isUnauthorizedError,
-  queryKeys,
   useBootstrapQuery,
   useRefreshTrackDetailMutation,
   useTrackDetailQuery,
@@ -26,7 +25,6 @@ import { routes } from "../lib/routes";
 
 export function TrackDetailPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
   const bootstrapQuery = useBootstrapQuery();
   const status = bootstrapQuery.data?.appStatus ?? null;
   const account = status?.account ?? null;
@@ -38,44 +36,17 @@ export function TrackDetailPage() {
     mutate: refreshDetail,
     reset: resetRefresh,
   } = useRefreshTrackDetailMutation(id);
-  const attemptedRefreshKeyRef = useRef<string | null>(null);
-  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
-
   const recentPlays = recentPlaysQuery.data?.items ?? [];
-
-  useEffect(() => {
-    attemptedRefreshKeyRef.current = null;
-    setRefreshWarning(null);
-    resetRefresh();
-  }, [id, resetRefresh]);
-
-  useEffect(() => {
-    if (isUnauthorizedError(detailQuery.error) || isUnauthorizedError(refreshError)) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap });
-    }
-  }, [detailQuery.error, queryClient, refreshError]);
-
-  useEffect(() => {
-    const detail = detailQuery.data;
-
-    if (!id || !detail || detail.detailStatus === "fresh" || isRefreshing) {
-      return;
-    }
-
-    const refreshKey = `${id}:${detail.detailStatus}`;
-
-    if (attemptedRefreshKeyRef.current === refreshKey) {
-      return;
-    }
-
-    attemptedRefreshKeyRef.current = refreshKey;
-    setRefreshWarning(null);
-    refreshDetail(undefined, {
-      onError: (error) => {
-        setRefreshWarning(getErrorMessage(error, "Unable to refresh track detail right now."));
-      },
-    });
-  }, [detailQuery.data, id, isRefreshing, refreshDetail]);
+  const { refreshWarning, dismissRefreshWarning } = useDetailRefresh({
+    id,
+    detail: detailQuery.data,
+    detailError: detailQuery.error,
+    refreshError,
+    isRefreshing,
+    resetRefresh,
+    refreshErrorMessage: "Unable to refresh track detail right now.",
+    refresh: ({ onError }) => refreshDetail(undefined, { onError }),
+  });
 
   const detail = detailQuery.data;
   const error =
@@ -85,33 +56,25 @@ export function TrackDetailPage() {
 
   return (
     <Shell>
-      {!account ? (
-        <EmptyState
-          title="Spotify is disconnected"
-          body="Reconnect in settings before viewing track detail."
-        />
-      ) : !id ? (
-        <InlineNotice tone="error">Track id is missing from the route.</InlineNotice>
-      ) : detailQuery.isPending && !detail ? (
-        <p className="py-8 text-sm text-(--text-subdued) animate-pulse">Loading track detail...</p>
-      ) : error && !detail ? (
-        <InlineNotice tone="error">{error}</InlineNotice>
-      ) : detail ? (
+      <DetailPageState
+        hasAccount={Boolean(account)}
+        hasRouteId={Boolean(id)}
+        disconnectedBody="Reconnect in settings before viewing track detail."
+        missingIdMessage="Track id is missing from the route."
+        isPending={detailQuery.isPending && !detail}
+        loadingLabel="Loading track detail..."
+        error={!detail ? error : null}
+      >
+        {detail ? (
         <div className="space-y-6">
-          <Link
-            to={routes.tracks}
-            className="inline-flex items-center gap-1.5 text-sm text-(--text-secondary) transition hover:text-(--text-primary)"
-          >
-            <span aria-hidden="true">←</span>
-            Back to tracks
-          </Link>
-
-          {refreshWarning ? (
-            <DismissibleWarning message={refreshWarning} onDismiss={() => setRefreshWarning(null)} />
-          ) : null}
-          {isRefreshing ? (
-            <InlineNotice>Refreshing track metadata in the background...</InlineNotice>
-          ) : null}
+          <DetailPageIntro
+            backTo={routes.tracks}
+            backLabel="Back to tracks"
+            refreshWarning={refreshWarning}
+            onDismissRefreshWarning={dismissRefreshWarning}
+            isRefreshing={isRefreshing}
+            refreshingMessage="Refreshing track metadata in the background..."
+          />
 
           {/* Hero */}
           <div className="flex items-end gap-6">
@@ -219,7 +182,8 @@ export function TrackDetailPage() {
             )}
           </section>
         </div>
-      ) : null}
+        ) : null}
+      </DetailPageState>
     </Shell>
   );
 }

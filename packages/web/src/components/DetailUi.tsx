@@ -6,7 +6,7 @@ import type {
 } from "../lib/api";
 import { routes } from "../lib/routes";
 import { ScrobbleRows } from "./ScrobbleList";
-import { Button, InlineNotice } from "./Ui";
+import { Button, EmptyState, InlineNotice } from "./Ui";
 
 function formatCount(value: number | null | undefined) {
   if (value == null) {
@@ -156,6 +156,81 @@ export function DismissibleWarning({
         </Button>
       </div>
     </InlineNotice>
+  );
+}
+
+export function DetailPageState({
+  hasAccount,
+  hasRouteId,
+  disconnectedBody,
+  missingIdMessage,
+  isPending,
+  loadingLabel,
+  error,
+  children,
+}: {
+  hasAccount: boolean;
+  hasRouteId: boolean;
+  disconnectedBody: string;
+  missingIdMessage: string;
+  isPending: boolean;
+  loadingLabel: string;
+  error: string | null;
+  children: ReactNode;
+}) {
+  if (!hasAccount) {
+    return (
+      <EmptyState title="Spotify is disconnected" body={disconnectedBody} />
+    );
+  }
+
+  if (!hasRouteId) {
+    return <InlineNotice tone="error">{missingIdMessage}</InlineNotice>;
+  }
+
+  if (isPending) {
+    return (
+      <p className="py-8 text-sm text-(--text-subdued) animate-pulse">{loadingLabel}</p>
+    );
+  }
+
+  if (error) {
+    return <InlineNotice tone="error">{error}</InlineNotice>;
+  }
+
+  return children;
+}
+
+export function DetailPageIntro({
+  backTo,
+  backLabel,
+  refreshWarning,
+  onDismissRefreshWarning,
+  isRefreshing,
+  refreshingMessage,
+}: {
+  backTo: string;
+  backLabel: string;
+  refreshWarning: string | null;
+  onDismissRefreshWarning: () => void;
+  isRefreshing: boolean;
+  refreshingMessage: string;
+}) {
+  return (
+    <>
+      <Link
+        to={backTo}
+        className="inline-flex items-center gap-1.5 text-sm text-(--text-secondary) transition hover:text-(--text-primary)"
+      >
+        <span aria-hidden="true">←</span>
+        {backLabel}
+      </Link>
+
+      {refreshWarning ? (
+        <DismissibleWarning message={refreshWarning} onDismiss={onDismissRefreshWarning} />
+      ) : null}
+      {isRefreshing ? <InlineNotice>{refreshingMessage}</InlineNotice> : null}
+    </>
   );
 }
 
