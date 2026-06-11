@@ -29,6 +29,7 @@ export const routes = {
   login: "/login",
   scrobbles: "/scrobbles",
   scrobblesPage: (page: number) => withPage("/scrobbles", page),
+  reports: "/reports",
   artists: "/artists",
   artistsPage: (page: number) => withPage("/artists", page),
   artist: (id: string) => `/artists/${id}`,
@@ -50,7 +51,7 @@ export const routes = {
 export const pagedRouteSuffix = "page/:page" as const;
 
 export type PrimaryNavItem = {
-  key: "home" | "scrobbles" | "artists" | "albums" | "tracks" | "settings";
+  key: "home" | "scrobbles" | "reports" | "artists" | "albums" | "tracks" | "settings";
   label: string;
   to: string;
   patterns: string[];
@@ -68,6 +69,12 @@ export const primaryNavItems: PrimaryNavItem[] = [
     label: "Scrobbles",
     to: routes.scrobbles,
     patterns: [routes.scrobbles, `${routes.scrobbles}/${pagedRouteSuffix}`],
+  },
+  {
+    key: "reports",
+    label: "Reports",
+    to: routes.reports,
+    patterns: [routes.reports],
   },
   {
     key: "artists",

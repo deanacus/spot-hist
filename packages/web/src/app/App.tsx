@@ -9,6 +9,7 @@ import { AlbumDetailPage } from "../pages/AlbumDetailPage";
 import { ArtistDetailPage } from "../pages/ArtistDetailPage";
 import { HomePage } from "../pages/HomePage";
 import { LoginPage } from "../pages/LoginPage";
+import { ReportsPage } from "../pages/ReportsPage";
 import { ScrobblesPage } from "../pages/ScrobblesPage";
 import {
   AlbumScrobblesPage,
@@ -128,6 +129,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute bootstrap={bootstrap}>
             <ScrobblesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path={routes.reports}
+        element={
+          <ProtectedRoute bootstrap={bootstrap}>
+            <ReportsPage />
           </ProtectedRoute>
         }
       />

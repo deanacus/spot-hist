@@ -13,14 +13,15 @@ type ShellProps = PropsWithChildren<{
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
+  contentWidthClassName?: string;
 }>;
 
-export function Shell({ children, title, subtitle, actions }: ShellProps) {
+export function Shell({ children, title, subtitle, actions, contentWidthClassName = "max-w-[960px]" }: ShellProps) {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[960px] px-6 py-6 lg:px-10 lg:py-8">
+        <div className={`mx-auto ${contentWidthClassName} px-6 py-6 lg:px-10 lg:py-8`}>
           {title ? (
             <header className="mb-8">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -130,6 +131,7 @@ function NavIcon({ name, active }: { name: string; active: boolean }) {
   const icons: Record<string, string> = {
     home: '◉',
     scrobbles: '≋',
+    reports: '▤',
     artists: '♫',
     albums: '▣',
     tracks: '♪',

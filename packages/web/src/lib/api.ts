@@ -2,6 +2,7 @@ import type {
   SpotifyHistoryImportJobSnapshot,
   SpotifyHistoryImportJobStatus,
 } from "@spot-hist/api-contracts/import-jobs";
+import { getUserTimeZone } from "./datetime";
 
 export type SetupStatus = {
   setupComplete: boolean;
@@ -95,6 +96,80 @@ type TopArtistsResponse = PaginatedResponse<TopArtist>;
 type TopAlbumsResponse = PaginatedResponse<TopAlbum>;
 
 type TopTracksResponse = PaginatedResponse<TopTrack>;
+
+export type ReportTimeframe = "week" | "month" | "year" | "5y" | "all";
+
+export type ReportBucket = {
+  key: string;
+  label: string;
+  count: number;
+  share: number;
+};
+
+export type ReportTopArtist = {
+  artist: ArtistSummary;
+  playCount: number;
+  listeningTimeMs: number;
+  shareOfScrobbles: number;
+};
+
+export type ReportTopAlbum = {
+  album: AlbumSummary;
+  artists: ArtistSummary[];
+  playCount: number;
+  listeningTimeMs: number;
+};
+
+export type ReportTopTrack = {
+  track: TrackSummary;
+  album: AlbumSummary;
+  artists: ArtistSummary[];
+  playCount: number;
+  listeningTimeMs: number;
+};
+
+export type ReportResponse = {
+  timeframe: ReportTimeframe;
+  offset: number;
+  label: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  isCurrentPeriod: boolean;
+  hasPreviousPeriod: boolean;
+  hasNextPeriod: boolean;
+  summary: {
+    totalScrobbles: number;
+    totalListeningTimeMs: number;
+    averageScrobblesPerDay: number;
+    averageListeningTimePerDayMs: number;
+    mostActiveDay: {
+      date: string;
+      playCount: number;
+      listeningTimeMs: number;
+    } | null;
+    longestStreakDays: number;
+  };
+  discovery: {
+    uniqueArtists: number;
+    newArtists: number;
+    uniqueAlbums: number;
+    newAlbums: number;
+    uniqueTracks: number;
+    newTracks: number;
+  };
+  topArtists: ReportTopArtist[];
+  topAlbums: ReportTopAlbum[];
+  topTracks: ReportTopTrack[];
+  patterns: {
+    listeningClock: ReportBucket[];
+    weekdayActivity: ReportBucket[];
+    byDecade: ReportBucket[];
+  };
+  composition: {
+    releaseFormatMix: ReportBucket[];
+    explicitMix: ReportBucket[];
+  };
+};
 
 export type DetailStatus = "fresh" | "stale" | "missing";
 
@@ -357,6 +432,14 @@ export const api = {
   },
   getStats() {
     return request<StatsSummary>("/api/stats");
+  },
+  getReport(timeframe: ReportTimeframe, offset = 0) {
+    const search = new URLSearchParams();
+    search.set("timeframe", timeframe);
+    search.set("offset", String(offset));
+    search.set("timeZone", getUserTimeZone());
+
+    return request<ReportResponse>(`/api/reports?${search.toString()}`);
   },
   getHistory(offset = 0, limit = 25) {
     const search = new URLSearchParams();

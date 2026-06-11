@@ -4,10 +4,12 @@ import {
   api,
   ApiError,
   type AppStatus,
+  type ReportTimeframe,
   type SetupStatus,
   type SpotifyHistoryImportJob,
   type SpotifyHistoryImportJobStatus,
 } from "../api";
+import { getUserTimeZone } from "../datetime";
 import { routes } from "../routes";
 
 export type BootstrapData = {
@@ -18,9 +20,12 @@ export type BootstrapData = {
 export const queryKeys = {
   bootstrap: ["bootstrap"] as const,
   stats: ["stats"] as const,
+  reports: ["reports"] as const,
   history: ["history"] as const,
   spotifyHistoryImportLatest: ["spotify-history-import", "latest"] as const,
   spotifyHistoryImportJob: (id: string) => ["spotify-history-import", id] as const,
+  report: (timeframe: ReportTimeframe, offset: number, timeZone = getUserTimeZone()) =>
+    ["reports", timeframe, offset, timeZone] as const,
   historyPage: (limit: number, offset: number) => ["history", limit, offset] as const,
   topArtists: (limit: number, offset: number) => ["top-artists", limit, offset] as const,
   topAlbums: (limit: number, offset: number) => ["top-albums", limit, offset] as const,
@@ -108,6 +113,7 @@ export async function invalidateAuthenticatedQueries(queryClient: QueryClient) {
 export async function invalidatePlayDerivedQueries(queryClient: QueryClient) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.reports }),
     queryClient.invalidateQueries({ queryKey: queryKeys.history }),
     queryClient.invalidateQueries({ queryKey: ["top-artists"] }),
     queryClient.invalidateQueries({ queryKey: ["top-albums"] }),

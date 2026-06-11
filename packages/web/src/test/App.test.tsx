@@ -13,6 +13,12 @@ import {
   openScrobbleDeleteConfirmation,
 } from "./helpers";
 
+const REPORT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+function makeReportRequestKey(timeframe: string, offset: number) {
+  return `GET /api/reports?timeframe=${timeframe}&offset=${offset}&timeZone=${encodeURIComponent(REPORT_TIME_ZONE)}`;
+}
+
 function makeStats() {
   return {
     totalPlays: 12,
@@ -134,6 +140,98 @@ function makeScopedTrackDetail() {
   return {
     track: { id: "track_1", name: "Midnight Run" },
     stats: { totalPlays: 18 },
+  };
+}
+
+function makeReport(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    timeframe: "month",
+    offset: 0,
+    label: "June 2026",
+    periodStart: "2026-05-31T14:00:00.000Z",
+    periodEnd: "2026-06-11T02:00:00.000Z",
+    isCurrentPeriod: true,
+    hasPreviousPeriod: true,
+    hasNextPeriod: false,
+    summary: {
+      totalScrobbles: 42,
+      totalListeningTimeMs: 7_560_000,
+      averageScrobblesPerDay: 3.8,
+      averageListeningTimePerDayMs: 687_272.72,
+      mostActiveDay: {
+        date: "2026-06-03",
+        playCount: 8,
+        listeningTimeMs: 1_440_000,
+      },
+      longestStreakDays: 6,
+    },
+    discovery: {
+      uniqueArtists: 12,
+      newArtists: 4,
+      uniqueAlbums: 16,
+      newAlbums: 5,
+      uniqueTracks: 24,
+      newTracks: 10,
+    },
+    topArtists: [
+      {
+        artist: { id: "artist_1", name: "North Coast", imageUrl: "https://cdn.test/artist.png" },
+        playCount: 12,
+        listeningTimeMs: 2_160_000,
+        shareOfScrobbles: 12 / 42,
+      },
+    ],
+    topAlbums: [
+      {
+        album: { id: "album_1", name: "Signals", imageUrl: "https://cdn.test/signals.png" },
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        playCount: 8,
+        listeningTimeMs: 1_440_000,
+      },
+    ],
+    topTracks: [
+      {
+        track: { id: "track_1", name: "Midnight Run", durationMs: 180000, explicit: false },
+        album: { id: "album_1", name: "Signals", imageUrl: "https://cdn.test/signals.png" },
+        artists: [{ id: "artist_1", name: "North Coast" }],
+        playCount: 6,
+        listeningTimeMs: 1_080_000,
+      },
+    ],
+    patterns: {
+      listeningClock: Array.from({ length: 24 }, (_, index) => ({
+        key: String(index),
+        label: `${index}`,
+        count: index === 10 ? 6 : 0,
+        share: index === 10 ? 6 / 42 : 0,
+      })),
+      weekdayActivity: [
+        { key: "1", label: "Mon", count: 5, share: 5 / 42 },
+        { key: "2", label: "Tue", count: 6, share: 6 / 42 },
+        { key: "3", label: "Wed", count: 9, share: 9 / 42 },
+        { key: "4", label: "Thu", count: 7, share: 7 / 42 },
+        { key: "5", label: "Fri", count: 5, share: 5 / 42 },
+        { key: "6", label: "Sat", count: 6, share: 6 / 42 },
+        { key: "0", label: "Sun", count: 4, share: 4 / 42 },
+      ],
+      byDecade: [
+        { key: "1990s", label: "1990s", count: 8, share: 8 / 42 },
+        { key: "2010s", label: "2010s", count: 22, share: 22 / 42 },
+        { key: "Unknown", label: "Unknown", count: 12, share: 12 / 42 },
+      ],
+    },
+    composition: {
+      releaseFormatMix: [
+        { key: "album", label: "Albums", count: 24, share: 24 / 42 },
+        { key: "single", label: "Singles", count: 14, share: 14 / 42 },
+        { key: "other", label: "Other", count: 4, share: 4 / 42 },
+      ],
+      explicitMix: [
+        { key: "explicit", label: "Explicit", count: 18, share: 18 / 42 },
+        { key: "clean", label: "Clean", count: 24, share: 24 / 42 },
+      ],
+    },
+    ...overrides,
   };
 }
 
@@ -540,6 +638,183 @@ describe("scoped scrobbles routes", () => {
 
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
     await waitForPathname(route);
+  });
+});
+
+describe("reports page", () => {
+  it("renders the report page and marks reports active in navigation", async () => {
+    installAuthenticatedFetchMock({
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      [makeReportRequestKey("month", 0)]: {
+        body: makeReport(),
+      },
+    });
+
+    await renderApp(routes.reports);
+
+    expect(await screen.findByRole("heading", { name: "Reports" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Your June 2026 in music" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reports" }).className).toContain("bg-(--accent)");
+    expect(screen.getByRole("link", { name: "Week" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Month" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Year" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "5Y" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All time" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Listening clock, peak hour 10AM with 6 scrobbles" })).toBeInTheDocument();
+    expect(screen.getByText("12AM")).toBeInTheDocument();
+    expect(screen.getByText("6PM")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("link")
+        .find((element) => element.getAttribute("href") === routes.artist("artist_1")),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole("link")
+        .find((element) => element.getAttribute("href") === routes.album("album_1")),
+    ).toBeTruthy();
+  });
+
+  it("switches timeframe and moves between adjacent periods", async () => {
+    const fetchMock = installAuthenticatedFetchMock({
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      [makeReportRequestKey("month", 0)]: {
+        body: makeReport(),
+      },
+      [makeReportRequestKey("week", 0)]: {
+        body: makeReport({
+          timeframe: "week",
+          label: "Current week",
+          hasPreviousPeriod: true,
+          topArtists: [
+            {
+              artist: { id: "artist_2", name: "Daylight", imageUrl: null },
+              playCount: 4,
+              listeningTimeMs: 720000,
+              shareOfScrobbles: 0.4,
+            },
+          ],
+        }),
+      },
+      [makeReportRequestKey("week", 1)]: {
+        body: makeReport({
+          timeframe: "week",
+          offset: 1,
+          label: "Last week",
+          isCurrentPeriod: false,
+          hasPreviousPeriod: false,
+          hasNextPeriod: true,
+          topArtists: [
+            {
+              artist: { id: "artist_3", name: "Night Drive", imageUrl: null },
+              playCount: 5,
+              listeningTimeMs: 900000,
+              shareOfScrobbles: 0.5,
+            },
+          ],
+        }),
+      },
+      [makeReportRequestKey("5y", 0)]: {
+        body: makeReport({
+          timeframe: "5y",
+          label: "2022–2026",
+          topArtists: [
+            {
+              artist: { id: "artist_4", name: "Long Arc", imageUrl: null },
+              playCount: 14,
+              listeningTimeMs: 2520000,
+              shareOfScrobbles: 14 / 42,
+            },
+          ],
+        }),
+      },
+    });
+
+    await renderApp(routes.reports);
+
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("link", { name: "Week" }));
+    expect(await screen.findByText("Your Current week in music")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.search).toBe("?timeframe=week&offset=0");
+    });
+
+    await user.click(screen.getByRole("link", { name: "Previous" }));
+    expect(await screen.findByText("Your Last week in music")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.search).toBe("?timeframe=week&offset=1");
+    });
+
+    await user.click(screen.getByRole("link", { name: "5Y" }));
+    expect(await screen.findByText("Your 2022–2026 in music")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.search).toBe("?timeframe=5y&offset=0");
+    });
+
+    expect(screen.getByRole("link", { name: "Previous" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Next" })).not.toBeInTheDocument();
+    expect(fetchMock.calls.map((call) => call.url)).toContain(
+      `/api/reports?timeframe=week&offset=1&timeZone=${encodeURIComponent(REPORT_TIME_ZONE)}`,
+    );
+    expect(fetchMock.calls.map((call) => call.url)).toContain(
+      `/api/reports?timeframe=5y&offset=0&timeZone=${encodeURIComponent(REPORT_TIME_ZONE)}`,
+    );
+  });
+
+  it("shows the empty-period state when a report has no scrobbles", async () => {
+    installAuthenticatedFetchMock({
+      "GET /api/stats": {
+        body: makeStats(),
+      },
+      [makeReportRequestKey("year", 0)]: {
+        body: makeReport({
+          timeframe: "year",
+          label: "2026",
+          summary: {
+            totalScrobbles: 0,
+            totalListeningTimeMs: 0,
+            averageScrobblesPerDay: 0,
+            averageListeningTimePerDayMs: 0,
+            mostActiveDay: null,
+            longestStreakDays: 0,
+          },
+          discovery: {
+            uniqueArtists: 0,
+            newArtists: 0,
+            uniqueAlbums: 0,
+            newAlbums: 0,
+            uniqueTracks: 0,
+            newTracks: 0,
+          },
+          topArtists: [],
+          topAlbums: [],
+          topTracks: [],
+          patterns: {
+            listeningClock: Array.from({ length: 24 }, (_, index) => ({
+              key: String(index),
+              label: `${index}`,
+              count: 0,
+              share: 0,
+            })),
+            weekdayActivity: [],
+            byDecade: [],
+          },
+          composition: {
+            releaseFormatMix: [],
+            explicitMix: [],
+          },
+        }),
+      },
+    });
+
+    await renderApp(`${routes.reports}?timeframe=year&offset=0`);
+
+    expect(await screen.findByRole("heading", { name: "No scrobbles in this period" })).toBeInTheDocument();
   });
 });
 

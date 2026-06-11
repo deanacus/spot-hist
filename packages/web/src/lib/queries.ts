@@ -5,3 +5,4 @@ export * from "./queries/top";
 export * from "./queries/detail";
 export * from "./queries/mutations";
 export * from "./queries/imports";
+export * from "./queries/reports";

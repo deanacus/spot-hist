@@ -18,6 +18,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerDetailRoutes } from "./routes/details.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { registerImportRoutes } from "./routes/import.js";
+import { registerReportRoutes } from "./routes/reports.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerStatsRoutes } from "./routes/stats.js";
 import { registerStatusRoutes } from "./routes/status.js";
@@ -80,6 +81,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await registerStatusRoutes(app);
   await registerHistoryRoutes(app);
   await registerImportRoutes(app);
+  await registerReportRoutes(app);
   await registerStatsRoutes(app);
   await registerTopRoutes(app);
   await registerDetailRoutes(app);
